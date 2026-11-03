@@ -22,7 +22,7 @@
 
 - [为什么需要 dsh-hermes-link](#为什么需要-dsh-hermes-link)
 - [核心特性](#核心特性)
-- [快速开始](#快速开始)
+- [快速开始（安装）](#快速开始安装)
 - [架构](#架构)
 - [配置](#配置)
 - [安全模型](#安全模型)
@@ -99,52 +99,74 @@ Hermes 是任务编排器 —— 规划工作、选择 skill、加载知识切�
 
 ---
 
-## 快速开始
+## 快速开始（安装）
 
-### 从 dsh-market 安装（推荐）
-
-```sh
-# 1. 确保你的 profile 已安装 dsh-market
-dsh plugin --profile web add dshmarket
-
-# 2. 重启 dsh web，打开 Settings → Plugin Market，搜索 "dsh-hermes-link"，一键安装
-```
-
-### 直接从 npm 安装
+### 从 npm 安装（推荐）
 
 ```sh
 dsh plugin --profile web add dsh-hermes-link
+# 需要固定版本时
+dsh plugin --profile web add dsh-hermes-link@0.7.0
 ```
 
-### 从本地 checkout 安装（开发循环）
+`dsh plugin` 实际是在 profile 目录里转发给 pnpm，因此 pnpm 支持的写法都可以用。
+
+### 从 GitHub Release 压缩包安装（不需要访问 npm registry）
 
 ```sh
-git clone https://github.com/Tianbuyu-wwx/dsh-hermes-link.git
+dsh plugin --profile web add \
+  https://github.com/guiyinrenshi/dsh-hermes-link/releases/download/v0.7.0/dsh-hermes-link-0.7.0.tgz
+```
+
+### 从源码 checkout 安装（开发调试）
+
+```sh
+git clone https://github.com/guiyinrenshi/dsh-hermes-link.git
 cd dsh-hermes-link
 dsh plugin --profile web add ./packages/dsh-hermes-link
 ```
 
-然后重启 `dsh web`。打开 Hermes 的 config.yaml（Windows 上是 `%LOCALAPPDATA%\hermes\config.yaml`）：
+### 安装之后
 
-```yaml
-mcp_servers:
-  dsh-bridge:
-    url: http://127.0.0.1:3080/mcp/collab
-```
+1. 让 DSH 能找到 Hermes Home。同机部署：在 DSH 环境里设置 `HERMES_HOME`
+   （例如 `HERMES_HOME=/root/.hermes`）；也可以在 cordis patch 条目里用
+   `config: { hermesHome: ... }` 指定。Hermes 在另一台机器：看
+   [docs/CROSS-MACHINE.md](packages/dsh-hermes-link/docs/CROSS-MACHINE.md)。
+2. 重启 `dsh`。
+3. 自检：
 
-可选：在 DSH 环境里设置 `HERMES_LINK_TOKEN` 强制 `Bearer` 鉴权（默认关闭）。
+   ```sh
+   npx hermes-link-doctor      # 健康基线：8 ok, 1 warn, 0 fail
+   npx hermes-link-status      # 每条通道一行
+   curl -s http://127.0.0.1:<dsh 端口>/mcp/collab/health
+   ```
 
-### 验证
+   那条 `warn` 是“暂无会话镜像”，新装时属于正常状态。
+
+4. 可选——安装 Hermes 侧插件（`consult_hermes` 应答、Hermes 回合结束通知 DSH）：
+
+   ```sh
+   npx hermes-link-install-hermes-plugin
+   hermes plugins list | grep dsh-link        # 应为 enabled
+   ```
+
+   然后重启 Hermes gateway。
+
+5. 可选——让 Hermes 反向往 DSH 派活：在 Hermes 主机上把本机 DSH 注册成 MCP server
+   （`mcp_servers.dsh-bridge`），见
+   [docs/CROSS-MACHINE.md](packages/dsh-hermes-link/docs/CROSS-MACHINE.md) §C。
+
+### 升级与卸载
 
 ```sh
-node scripts/verify-install.mjs
+dsh plugin --profile web update dsh-hermes-link
+dsh plugin --profile web remove dsh-hermes-link
 ```
 
-在 DSH 里：
+### 关于 dsh-market
 
-```
-/mcp/collab/health → { ok: true, version: "0.6.0", importer_ready: true, persona_ready: true, consult_ready: true, auth: "open|bearer-required", continuable_registry: "on", foundation_slice_chars: 1234, active_dispatchers: 0 }
-```
+市场里那张卡片仍指向原来的 scoped 包（`@tianbuyu-wwx/dsh-hermes-link`）。在登记信息
+更新之前，请用上面的命令安装本 fork。
 
 ---
 

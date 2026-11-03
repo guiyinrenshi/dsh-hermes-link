@@ -23,6 +23,7 @@
 - [Why dsh-hermes-link exists](#why-dsh-hermes-link-exists)
 - [Features](#features)
 - [Quickstart](#quickstart)
+- [Install](#install)
 - [Architecture](#architecture)
 - [Configuration](#configuration)
 - [Security model](#security-model)
@@ -139,50 +140,77 @@ See [docs/security-model.md](docs/security-model.md) for the full layered model.
 Step-by-step instructions for all three (plus systemd units, verification and a
 troubleshooting table) live in [docs/CROSS-MACHINE.md](packages/dsh-hermes-link/docs/CROSS-MACHINE.md).
 
-## Install from dsh-market (recommended)
+## Install
 
-```sh
-# 1. Make sure dsh-market is installed in your profile
-dsh plugin --profile web add dshmarket
-
-# 2. Restart dsh web, open Settings → Plugin Market, search "dsh-hermes-link", one-click install
-```
-
-### Install from npm directly
+### From npm (recommended)
 
 ```sh
 dsh plugin --profile web add dsh-hermes-link
+# pin a version if you prefer
+dsh plugin --profile web add dsh-hermes-link@0.7.0
 ```
 
-### Install from a local checkout (dev loop)
+`dsh plugin` forwards to pnpm inside the profile, so every spec pnpm accepts works
+here too.
+
+### From a GitHub Release tarball (no registry access needed)
 
 ```sh
-git clone https://github.com/Tianbuyu-wwx/dsh-hermes-link.git
+dsh plugin --profile web add \
+  https://github.com/guiyinrenshi/dsh-hermes-link/releases/download/v0.7.0/dsh-hermes-link-0.7.0.tgz
+```
+
+### From a source checkout (development loop)
+
+```sh
+git clone https://github.com/guiyinrenshi/dsh-hermes-link.git
 cd dsh-hermes-link
 dsh plugin --profile web add ./packages/dsh-hermes-link
 ```
 
-Then restart `dsh web`. Open Hermes-config.yaml (`%LOCALAPPDATA%\hermes\config.yaml` on Windows) and add:
+### After installing
 
-```yaml
-mcp_servers:
-  dsh-bridge:
-    url: http://127.0.0.1:3080/mcp/collab
-```
+1. Make sure DSH can find Hermes Home. Same host: set `HERMES_HOME` (e.g.
+   `HERMES_HOME=/root/.hermes`) in the DSH environment, or point the cordis patch
+   entry at it with `config: { hermesHome: ... }`. Remote Hermes: follow
+   [docs/CROSS-MACHINE.md](packages/dsh-hermes-link/docs/CROSS-MACHINE.md).
+2. Restart `dsh`.
+3. Verify the plugin:
 
-Optionally set `HERMES_LINK_TOKEN` in your DSH env to require a `Bearer` header (off by default).
+   ```sh
+   npx hermes-link-doctor      # healthy baseline: 8 ok, 1 warn, 0 fail
+   npx hermes-link-status      # one line per channel
+   curl -s http://127.0.0.1:<dsh-port>/mcp/collab/health
+   ```
 
-### Verify
+   The `warn` is the empty session-mirror state and is expected on a fresh install.
+
+4. Optional — install the Hermes-side plugin (reply to `consult_hermes`, notify DSH
+   when a Hermes turn ends):
+
+   ```sh
+   npx hermes-link-install-hermes-plugin
+   hermes plugins list | grep dsh-link        # enabled
+   ```
+
+   Then restart the Hermes gateway.
+
+5. Optional — let Hermes dispatch into DSH: register this DSH as an MCP server on
+   the Hermes host (`mcp_servers.dsh-bridge`), see
+   [docs/CROSS-MACHINE.md](packages/dsh-hermes-link/docs/CROSS-MACHINE.md) §C.
+
+### Upgrade and uninstall
 
 ```sh
-node scripts/verify-install.mjs
+dsh plugin --profile web update dsh-hermes-link
+dsh plugin --profile web remove dsh-hermes-link
 ```
 
-Then in DSH:
+### dsh-market
 
-```
-/mcp/collab/health → { ok: true, version: "0.5.0", importer_ready: true, persona_ready: true, consult_ready: true, auth: "open|bearer-required", continuable_registry: "on", foundation_slice_chars: 1234, active_dispatchers: 0 }
-```
+The market card still points at the original scoped package
+(`@tianbuyu-wwx/dsh-hermes-link`). Until the registry entry is updated, install
+with one of the commands above instead.
 
 ---
 

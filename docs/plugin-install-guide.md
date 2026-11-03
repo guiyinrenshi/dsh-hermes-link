@@ -1,4 +1,4 @@
-# Plugin Install Guide — three ways to install dsh-hermes-link
+# Plugin Install Guide — ways to install dsh-hermes-link
 
 Pick the path that matches your workflow. All three end up with `dsh-hermes-link` running inside your DSH web profile.
 
@@ -6,7 +6,11 @@ Pick the path that matches your workflow. All three end up with `dsh-hermes-link
 
 ## Path 1 — From dsh-market (recommended for most users)
 
-`dsh-market` is a community-curated registry hosted at `awesome-dsh-plugin.com`. Once `dsh-hermes-link` is listed there, users install it with a few clicks.
+`dsh-market` is a community-curated registry hosted at `awesome-dsh-plugin.com`.
+
+> **Status for this fork:** the market card still resolves to the original scoped
+> package (`@tianbuyu-wwx/dsh-hermes-link`). Until that entry is updated, use
+> Path 2 (npm) or Path 3 (Release tarball) below.
 
 ### Prerequisites
 
@@ -15,7 +19,7 @@ Pick the path that matches your workflow. All three end up with `dsh-hermes-link
 
 ### Install
 
-1. Open DSH web (e.g. `dsh --profile web`, defaults to `127.0.0.1:3080`).
+1. Open DSH web (e.g. `dsh --profile web`, listens on `127.0.0.1:<dsh-port>`, e.g. 3091 in a typical systemd install).
 2. Settings → **Plugin Market**.
 3. Search `dsh-hermes-link`.
 4. Click the card → confirm install source (npm: `dsh-hermes-link`).
@@ -24,7 +28,7 @@ Pick the path that matches your workflow. All three end up with `dsh-hermes-link
 ### Verify
 
 ```sh
-curl -s http://127.0.0.1:3080/mcp/collab/health | jq
+curl -s http://127.0.0.1:<dsh-port>/mcp/collab/health | jq
 ```
 
 Expected:
@@ -32,7 +36,7 @@ Expected:
 ```json
 {
   "ok": true,
-  "version": "0.2.4",
+  "version": "0.7.0",
   "hermes_home": "...",
   "importer_ready": true,
   "persona_ready": true,
@@ -53,15 +57,39 @@ All three are handled by `dsh-market`'s Plugin tab:
 
 ---
 
-## Path 2 — From npm directly
+## Path 2 — From npm directly (recommended)
 
-If you don't use `dsh-market`, install via the official `dsh plugin` command, which delegates to pnpm:
+`dsh plugin` delegates to pnpm, so any spec pnpm accepts works:
 
 ```sh
+# latest published version
 dsh plugin --profile web add dsh-hermes-link
+
+# or pin an exact version
+dsh plugin --profile web add dsh-hermes-link@0.7.0
 ```
 
-Then restart `dsh web`. Verify as in Path 1.
+Then restart `dsh`. Verify:
+
+```sh
+npx hermes-link-doctor      # baseline: 8 ok, 1 warn, 0 fail
+npx hermes-link-status
+```
+
+## Path 3 — From a GitHub Release tarball (no registry access)
+
+Useful on air-gapped hosts or to pin a build:
+
+```sh
+dsh plugin --profile web add \
+  https://github.com/guiyinrenshi/dsh-hermes-link/releases/download/v0.7.0/dsh-hermes-link-0.7.0.tgz
+```
+
+Or download the `.tgz` from the Release page and install it from disk:
+
+```sh
+dsh plugin --profile web add /path/to/dsh-hermes-link-0.7.0.tgz
+```
 
 ### Update / uninstall
 
@@ -83,7 +111,7 @@ Or via `dsh-market`'s hot-disable button.
 
 ---
 
-## Path 3 — From a local checkout (developer loop)
+## Path 4 — From a local checkout (developer loop)
 
 If you're hacking on `dsh-hermes-link` itself (or want to pin to a specific commit):
 
@@ -180,7 +208,7 @@ Make sure the `Authorization` header value is exactly `Bearer <token>` — case-
 ```yaml
 mcp_servers:
   dsh-bridge:
-    url: http://127.0.0.1:3080/mcp/collab
+    url: http://127.0.0.1:<dsh-port>/mcp/collab
     headers:
       Authorization: "Bearer ${HERMES_LINK_TOKEN}"
 ```
