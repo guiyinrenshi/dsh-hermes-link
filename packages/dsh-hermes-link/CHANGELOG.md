@@ -24,6 +24,22 @@ session list/mirror) untouched and repairs the paths that hard-failed on a
   codec rejection names the expected version, the partial artifact is removed,
   the header is rebuilt with the host's number and the write is retried once
   (so a future v5 does not need a release).
+- **Cross-machine capabilities, useful on one host too.** Ported from a
+  Windows deployment where Hermes lived on another machine:
+  `config.hermesHome` (config > `HERMES_HOME` > platform default, with a
+  warning + fallback when the directory is missing), a `read_hermes_memory`
+  tool for `memories/MEMORY.md` + `memories/USER.md` (the files the persona
+  slice deliberately omits; reading is capped and unit-tested in
+  `services/hermes-memory.mjs`), a `tools.schemas()` fallback for every host
+  whose catalog has no `view().restrictableNames` (no more
+  `E_TOOL_CATALOG_UNAVAILABLE`), and dispatch retrying the other live parent
+  agents when one has an inactive context.
+- **Optional remote deployment**: `bridge/hermes-bridge.py` mirrors a remote
+  Hermes Home over SSH (bidirectional, reduced `state.db` snapshot, optional
+  reverse tunnel + DSH export) and `docs/CROSS-MACHINE.md` walks through all
+  three topologies with systemd units, verification commands, security notes
+  and a troubleshooting table.
+
 - **Import: canonical v4 event ordering.** A stored v4 log is replayed through
   the relationship validator on read, and that validator is strict about order:
   `request/header` must sit inside an open turn, steps are 1-based, an
