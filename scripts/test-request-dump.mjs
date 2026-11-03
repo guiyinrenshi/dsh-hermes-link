@@ -48,11 +48,13 @@ t('case 1: minimal user-only request → 1 user/message + boundary events', () =
   assert.equal(firstUserSnippet, 'hi')
   // event types in order
   const types = events.map((e) => e.type)
+  // v4 ordering: the epoch header lives INSIDE the open turn (a header outside
+  // a turn is a read-time format error), so it follows the first user message.
   assert.deepEqual(types, [
-    'request/header',
     'turn/start',
     'step/start',
     'user/message',
+    'request/header',
     'step/end',
     'turn/end',
     'session/end-seed',
@@ -114,17 +116,16 @@ t('case 3: assistant tool_use + user tool_result → tool/call + tool/result eve
   })
   const { events } = requestDumpToEvents(dump, 3000)
   const types = events.map((e) => e.type)
-  // Expected order (text-bearing tool call splits into tool/call + assistant/message):
-  //   request/header, turn/start, step/start,
-  //   user/message (go search),
-  //   tool/call, assistant/message (searching...),
-  //   tool/result,
-  //   assistant/message (done),
+  // Expected order (v4): the assistant message advertises its tool calls, the
+  // log-only tool/call follows it, then the matching tool/result.
+  //   turn/start, step/start, user/message (go search), request/header,
+  //   assistant/message (searching... + tool-call), tool/call,
+  //   tool/result, assistant/message (done),
   //   step/end, turn/end, session/end-seed
   const expected = [
-    'request/header','turn/start','step/start',
-    'user/message',
-    'tool/call','assistant/message',
+    'turn/start','step/start',
+    'user/message','request/header',
+    'assistant/message','tool/call',
     'tool/result',
     'assistant/message',
     'step/end','turn/end','session/end-seed',
@@ -137,15 +138,17 @@ t('case 3: assistant tool_use + user tool_result → tool/call + tool/result eve
   // tool/call is log-only — no surfaceOp
   assert.ok(!('surfaceOp' in tc))
   const tr = events.find((e) => e.type === 'tool/result')
-  // DSH ToolResultMessage shape: id, role:'user', content:[ToolResultBlock], source:{kind:'tool', callId}
-  assert.equal(tr.data.message.role, 'user')
+  // v0.7.0 / format v4 ToolResultMessage: role:'tool', message-level toolCallId
+  // equal to source.callId, and flat content blocks with NO tool-result wrapper
+  // (the v3 wrapper shape is refused on write: "requires a tool-role message").
+  assert.equal(tr.data.message.role, 'tool')
   assert.equal(tr.data.message.source.kind, 'tool')
   assert.equal(tr.data.message.source.callId, 'call_abc')
+  assert.equal(tr.data.message.toolCallId, 'call_abc')
   assert.ok(Array.isArray(tr.data.message.content))
   assert.equal(tr.data.message.content.length, 1)
-  assert.equal(tr.data.message.content[0].type, 'tool-result')
-  assert.equal(tr.data.message.content[0].toolCallId, 'call_abc')
-  const innerText = tr.data.message.content[0].content[0].text
+  assert.notEqual(tr.data.message.content[0].type, 'tool-result')
+  const innerText = tr.data.message.content[0].text
   assert.ok(!innerText.startsWith('<untrusted'))
   assert.ok(innerText.includes('"ok":true'))
   // tool/result is surface
@@ -194,7 +197,7 @@ t('case 6: empty messages → no user/assistant events, just boundary', () => {
   assert.equal(firstUserSnippet, '')
   const types = events.map((e) => e.type)
   assert.deepEqual(types, [
-    'request/header','turn/start','step/start','step/end','turn/end','session/end-seed',
+    'turn/start','step/start','request/header','step/end','turn/end','session/end-seed',
   ])
 })
 
@@ -255,7 +258,7 @@ t('case 9: DSH persistence turn contract — all turn envelopes use turn 1 (turn
   const turnEnd = events.find((e) => e.type === 'turn/end')
   assert.equal(turnStart.data.turn, 1)
   assert.equal(stepStart.data.turn, 1)
-  assert.equal(stepStart.data.step, 0)
+  assert.equal(stepStart.data.step, 1, 'v4 steps are 1-based')
   assert.equal(turnEnd.data.turn, 1)
   assert.equal(turnEnd.data.reason.kind, 'completed')
   // surface messages also carry turn 1 (assistant/tool-result envelopes)
@@ -295,9 +298,9 @@ t('case 11: OpenAI-style assistant tool_calls + tool role -> assistant text + to
   const { events } = requestDumpToEvents(dump, 11000)
   const types = events.map((e) => e.type)
   const expected = [
-    'request/header','turn/start','step/start',
-    'user/message',
-    'tool/call','assistant/message',
+    'turn/start','step/start',
+    'user/message','request/header',
+    'assistant/message','tool/call',
     'tool/result',
     'assistant/message',
     'step/end','turn/end','session/end-seed',
@@ -312,9 +315,11 @@ t('case 11: OpenAI-style assistant tool_calls + tool role -> assistant text + to
   assert.equal(asst[0].data.message.content[0].text, 'searching...')
   assert.equal(asst[1].data.message.content[0].text, 'done')
   const tr = events.find((e) => e.type === 'tool/result')
+  assert.equal(tr.data.message.role, 'tool')
   assert.equal(tr.data.message.source.kind, 'tool')
   assert.equal(tr.data.message.source.callId, 'call_abc')
-  assert.equal(tr.data.message.content[0].content[0].text, '{"ok":true}')
+  assert.equal(tr.data.message.toolCallId, 'call_abc')
+  assert.equal(tr.data.message.content[0].text, '{"ok":true}')
   // turn contract also holds for OpenAI-style messages
   for (const e of events) {
     if (e.type === 'request/header' || e.type === 'session/end-seed') continue

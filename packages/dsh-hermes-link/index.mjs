@@ -75,7 +75,7 @@ import { createDispatchStatusTool } from './tools/dispatch-status.mjs'
 
 const skillDir = fileURLToPath(new URL('./skills/dsh-hermes-link', import.meta.url))
 const MAX_FOUNDATION_SLICE_CHARS = 4096
-const VERSION = '0.6.11'
+const VERSION = '0.7.0'
 
 // -----------------------------------------------------------------------------
 // v0.3.2 F6 - register the canonical metric shape so the wire format is
@@ -238,16 +238,21 @@ export function apply(ctx) {
   const hermesWorkspaceDir = join(process.env.DSH_HOME || join(homedir(), '.dsh'), 'hermes-workspace')
   const importer = ctx.sessions ? createImporter({ ctx, hermesHome, workspaceDir: hermesWorkspaceDir }) : null
   const personaLoader = { loadPersona: (h, opts) => loadPersona(h || hermesHome, opts) }
+  // v0.3.2 F6 - Prometheus-compatible metrics registry.
+  // v0.6.0 (D1) - per-token rate-limit + daily token budget. Hot-reload via plugin restart.
+  // Set HERMES_LINK_RATE_LIMIT_RPM=0 (or _DAILY_TOKENS=0) to disable that axis.
+  //
+  // v0.7.0 TDZ fix: `metrics` used to be declared at the BOTTOM of this block,
+  // after createConsultClient({ hermesHome, metrics }) read it - a temporal
+  // dead zone ReferenceError that aborted apply() on every boot. The registry
+  // is created before its first reader now.
+  buildRateLimiterFromEnv()
+  const metrics = createMetricsRegistry()
+  registerMetricsShape(metrics, { VERSION })
   const consultClient = createConsultClient({ hermesHome, metrics })
   const outbox = createOutbox({ hermesHome })
   // v0.3.1 F2 - file rotation for the outbox (heartbeat/usage/memory-suggest/session-mirror).
   const outboxRotation = createOutboxRotation({ hermesHome })
-  // v0.3.2 F6 - Prometheus-compatible metrics registry.
-  // v0.6.0 (D1) - per-token rate-limit + daily token budget. Hot-reload via plugin restart.
-  // Set HERMES_LINK_RATE_LIMIT_RPM=0 (or _DAILY_TOKENS=0) to disable that axis.
-  buildRateLimiterFromEnv()
-  const metrics = createMetricsRegistry()
-  registerMetricsShape(metrics, { VERSION })
   // Wire audit + outbox + sse counter bridges
   setAuditMetrics(metrics)
   setOutboxMetrics(metrics)

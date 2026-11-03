@@ -82,9 +82,23 @@ function createAssistantMessage(input) {
 }
 
 function createToolResultMessage(input) {
-  return createUserMessage({
+  // v0.7.0 (format v4): a tool result is a FIRST-CLASS tool-role message.
+  // Released v3 wrapped it as a user-role message whose single content block was
+  // a `tool-result` wrapper; dsh 0.2.x refuses that shape on write:
+  //   "format v4 tool/result at seq N requires a tool-role message"
+  // The v4 shape (dsh-llm ToolResultMessage / dsh-session-format-v3-to-v4
+  // liftToolResult) is: role 'tool', a tool source, a message-level toolCallId
+  // that must equal source.callId, and plain content blocks with NO nested
+  // `tool-result` wrapper.
+  return deepFreeze({
+    id: MessageId(randomUUID()),
+    role: 'tool',
     source: { kind: 'tool', callId: CallId(input.callId) },
-    content: [{ type: 'tool-result', toolCallId: CallId(input.callId), content: input.content, isError: input.isError }],
+    toolCallId: CallId(input.callId),
+    content: Array.isArray(input.content)
+      ? input.content
+      : [{ type: 'text', text: String(input.content == null ? '' : input.content) }],
+    ...(input.isError === undefined ? {} : { isError: input.isError }),
   })
 }
 
@@ -152,21 +166,47 @@ export function requestDumpToEvents(dump, baseTime = Date.now()) {
     },
     reason: 'initial',
   }
-  events.push(makeEvent('request/header', headerData, seq++, mkTime()))
+  // v4 ordering (dsh 0.2.x): request/header must sit INSIDE an open turn -
+  // the relationship validator rejects "request/header is outside an open
+  // turn" when a session is read back. It is therefore emitted lazily after
+  // the first user message (or before the first assistant message), not at
+  // seq 0 the way released v3 allowed.
+  const STEP = 1
+  let headerEmitted = false
+  const emitHeader = () => {
+    if (headerEmitted) return
+    headerEmitted = true
+    events.push(makeEvent('request/header', headerData, seq++, mkTime()))
+  }
+  // Tool lifecycle (v4): an assistant message advertises its calls first, the
+  // log-only tool/call events follow, and a tool/result may only close a call
+  // that was advertised AND started. Anything else is an orphan the reader
+  // rejects, so unmatched results are dropped and counted.
+  const pendingCalls = new Set()
+  let droppedOrphans = 0
+  const emitToolResult = (callId, contentText, isError) => {
+    if (!callId || !pendingCalls.has(callId)) { droppedOrphans++; return }
+    pendingCalls.delete(callId)
+    const message = createToolResultMessage({
+      callId,
+      content: [{ type: 'text', text: typeof contentText === 'string' ? contentText : safeStringify(contentText) }],
+      isError: isError === true,
+    })
+    events.push(makeSurfaceEvent('tool/result', { turn: 1, step: STEP, message }, seq++, mkTime(), [0]))
+  }
 
   // -- turn 1, step 0 begin --
   // DSH persistence validates turn/end.turn >= 1 (a turn:0 envelope is
   // rejected as "malformed pre-react-loop turn/end"), so imported history is
   // folded into turn 1, not 0 — same shape as a real first turn.
   events.push(makeEvent('turn/start',  { turn: 1 },            seq++, mkTime()))
-  events.push(makeEvent('step/start',  { turn: 1, step: 0 },   seq++, mkTime()))
+  events.push(makeEvent('step/start',  { turn: 1, step: STEP },   seq++, mkTime()))
 
   // Walk messages; assistant with tool_use becomes 1 tool/call event per use + 1 assistant/message.
   // user with tool_result blocks becomes 1 tool/result event per block.
   // user with text becomes 1 user/message event.
   // OpenAI-compatible dumps (assistant.content string + assistant.tool_calls[] + role:'tool' results) are normalized too.
   let firstUserSnippet = ''
-  let stepAssistantCount = 0
   for (let m = 0; m < messages.length; m++) {
     const msg = messages[m]
     if (!msg || !msg.role) continue
@@ -179,6 +219,7 @@ export function requestDumpToEvents(dump, baseTime = Date.now()) {
           source: { kind: 'user' },
         })
         events.push(makeSurfaceEvent('user/message', message, seq++, mkTime(), [0]))
+        emitHeader()
       } else if (Array.isArray(content)) {
         const textParts = []
         const toolResults = []
@@ -198,20 +239,12 @@ export function requestDumpToEvents(dump, baseTime = Date.now()) {
             source: { kind: 'user' },
           })
           events.push(makeSurfaceEvent('user/message', message, seq++, mkTime(), [0]))
+          emitHeader()
         }
         for (const tr of toolResults) {
           // strip Hermes' untrusted wrapper so the model sees just the payload.
           const stripped = stripUntrustedWrapper(tr.content)
-          const message = createToolResultMessage({
-            callId: tr.tool_use_id || '',
-            content: [{ type: 'text', text: typeof stripped === 'string' ? stripped : safeStringify(stripped) }],
-            isError: false,
-          })
-          events.push(makeSurfaceEvent('tool/result', {
-            turn: 1,
-            step: stepAssistantCount,
-            message,
-          }, seq++, mkTime(), [0]))
+          emitToolResult(tr.tool_use_id || '', typeof stripped === 'string' ? stripped : safeStringify(stripped), false)
         }
       }
     } else if (msg.role === 'assistant') {
@@ -251,23 +284,25 @@ export function requestDumpToEvents(dump, baseTime = Date.now()) {
           })
         }
       }
-      // emit tool/call first (log-only), then assistant/message (surface)
-      for (const tu of toolUses) {
-        events.push(makeEvent('tool/call', {
-          turn: 1,
-          step: stepAssistantCount,
-          callId: tu.id || `call_${seq}`,
-          name: tu.name || '',
-          arguments: typeof tu.input === 'string' ? tu.input : safeStringify(tu.input || {}),
-        }, seq++, mkTime()))
-      }
+      // v4 ordering: the assistant message ADVERTISES its tool calls as
+      // `tool-call` content blocks; the log-only tool/call events follow it.
+      // A tool/call without an advertised block is rejected on read
+      // ("tool/call X has no advertised tool lifecycle").
+      const advertised = toolUses.map((tu) => ({
+        id: tu.id || ('call_' + seq + '_' + Math.random().toString(16).slice(2, 8)),
+        name: tu.name || '',
+        arguments: typeof tu.input === 'string' ? tu.input : safeStringify(tu.input || {}),
+      }))
+      const contentBlocks = textBlocks.slice()
+      for (const a of advertised) contentBlocks.push({ type: 'tool-call', id: a.id, name: a.name, arguments: a.arguments })
       // even if there were only tool_uses (no text), still emit assistant/message
       // with an empty text block so the surface has a placeholder turn.
-      if (textBlocks.length === 0) {
-        textBlocks.push({ type: 'text', text: '' })
+      if (contentBlocks.length === 0) {
+        contentBlocks.push({ type: 'text', text: '' })
       }
+      emitHeader()
       const message = createAssistantMessage({
-        content: textBlocks,
+        content: contentBlocks,
         source: { provider, model },
       })
       // v0.6.0 (D1) fix #4: assistant/message MUST carry a `stream` array.
@@ -282,29 +317,36 @@ export function requestDumpToEvents(dump, baseTime = Date.now()) {
       // is the honest representation: the settled `message` carries the content.
       events.push(makeSurfaceEvent('assistant/message', {
         turn: 1,
-        step: stepAssistantCount,
+        step: STEP,
         message,
         stream: [],
       }, seq++, mkTime()))
-      stepAssistantCount++
+      for (const a of advertised) {
+        events.push(makeEvent('tool/call', {
+          turn: 1,
+          step: STEP,
+          callId: a.id,
+          name: a.name,
+          arguments: a.arguments,
+        }, seq++, mkTime()))
+        pendingCalls.add(a.id)
+      }
     } else if (msg.role === 'tool' || msg.role === 'function') {
       // OpenAI-compatible tool result message.
       const stripped = stripUntrustedWrapper(msg.content)
-      const message = createToolResultMessage({
-        callId: msg.tool_call_id || msg.name || `call_${seq}`,
-        content: [{ type: 'text', text: typeof stripped === 'string' ? stripped : safeStringify(stripped) }],
-        isError: false,
-      })
-      events.push(makeSurfaceEvent('tool/result', {
-        turn: 1,
-        step: stepAssistantCount,
-        message,
-      }, seq++, mkTime(), [0]))
+      emitToolResult(msg.tool_call_id || msg.name || '', typeof stripped === 'string' ? stripped : safeStringify(stripped), false)
     }
   }
 
-  // -- step 0 end + turn 1 end (best-effort: the dump is a failed/aborted request) --
-  events.push(makeEvent('step/end',  { turn: 1, step: 0 },  seq++, mkTime()))
+  // A dump can end mid-flight: close every advertised-but-unanswered call with
+  // an honest placeholder so the log never leaves an open tool transaction.
+  if (!headerEmitted) emitHeader()
+  for (const id of [...pendingCalls]) {
+    emitToolResult(id, '(no tool result recorded in the Hermes dump)', true)
+  }
+
+  // -- step 1 end + turn 1 end (best-effort: the dump is a failed/aborted request) --
+  events.push(makeEvent('step/end',  { turn: 1, step: STEP },  seq++, mkTime()))
   if (error) {
     events.push(makeEvent('turn/end', {
       turn: 1,
@@ -330,6 +372,7 @@ export function requestDumpToEvents(dump, baseTime = Date.now()) {
   const meta = {
     cwd: process.cwd(),
     agentPreset: 'hermes-imported',
+    droppedOrphanResults: droppedOrphans,
   }
 
   return { events, meta, firstUserSnippet }

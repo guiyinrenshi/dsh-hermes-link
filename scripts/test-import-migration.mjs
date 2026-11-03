@@ -215,7 +215,7 @@ await t('(a) fresh import -> status created; write handle got the events (D1)', 
   const logicalKeys = ['version', 'id', 'createdAt', 'isSeeded', 'delegationDepth', 'cwd', 'parentSession', 'origin', 'agentPreset']
   assert.deepEqual(Object.keys(h).filter((k) => !logicalKeys.includes(k)), [],
     'create() header must not carry a key the backend codec refuses')
-  assert.equal(h.version, 3, 'version must be SESSION_FORMAT_VERSION (3)')
+  assert.equal(h.version, 4, 'version must be SESSION_FORMAT_VERSION (4 on dsh 0.2.x)')
   assert.equal(h.isSeeded, false, 'isSeeded is required by the on-disk header guard')
   assert.equal(h.delegationDepth, 0)
   assert.equal(norm(h.cwd), norm(projectA))
@@ -296,7 +296,7 @@ await t('(c) existing session with the same cwd -> already_imported', async () =
     dir: base,
     seed: {
       id: 'hermes-s5',
-      header: { type: 'session', version: 3, id: 'hermes-s5', createdAt: 1, isSeeded: false, delegationDepth: 0, cwd: projectC, agentPreset: 'hermes-imported' },
+      header: { type: 'session', version: 4, id: 'hermes-s5', createdAt: 1, isSeeded: false, delegationDepth: 0, cwd: projectC, agentPreset: 'hermes-imported' },
       events: [{ type: 'session/end-seed', seq: 0, time: 1, data: {} }],
       path: artifact,
     },
@@ -431,7 +431,7 @@ await t('(f) cwd changed, no activity -> artifact removed and session rebuilt (D
     dir: base,
     seed: {
       id: 'hermes-s11',
-      header: { type: 'session', version: 3, id: 'hermes-s11', createdAt: 1, isSeeded: false, delegationDepth: 0, cwd: join(base, 'old-ws'), agentPreset: 'hermes-imported' },
+      header: { type: 'session', version: 4, id: 'hermes-s11', createdAt: 1, isSeeded: false, delegationDepth: 0, cwd: join(base, 'old-ws'), agentPreset: 'hermes-imported' },
       events: [{ type: 'session/end-seed', seq: 0, time: 1, data: {} }],
       path: stale,
     },
@@ -456,7 +456,7 @@ await t('(f2) cwd changed but no artifact path available -> import_failed (D2)',
     noListArtifacts: true,
     seed: {
       id: 'hermes-s12',
-      header: { type: 'session', version: 3, id: 'hermes-s12', createdAt: 1, isSeeded: false, delegationDepth: 0, cwd: join(base, 'old-ws'), agentPreset: 'hermes-imported' },
+      header: { type: 'session', version: 4, id: 'hermes-s12', createdAt: 1, isSeeded: false, delegationDepth: 0, cwd: join(base, 'old-ws'), agentPreset: 'hermes-imported' },
       events: [{ type: 'session/end-seed', seq: 0, time: 1, data: {} }],
       path: artifact,
     },
@@ -484,7 +484,7 @@ await t('(f3) unreadable stored log -> rebuilt from the dump (D1)', async () => 
     noRead: true,
     seed: {
       id: 'hermes-s13',
-      header: { type: 'session', version: 3, id: 'hermes-s13', createdAt: 1, isSeeded: false, delegationDepth: 0, cwd: join(base, 'old-ws'), agentPreset: 'hermes-imported' },
+      header: { type: 'session', version: 4, id: 'hermes-s13', createdAt: 1, isSeeded: false, delegationDepth: 0, cwd: join(base, 'old-ws'), agentPreset: 'hermes-imported' },
       events: [],
       path: stale,
     },
@@ -526,7 +526,7 @@ await t('(h) real DSH codec accepts the emitted header', async () => {
   }
   const { sessionFormatCatalog } = await import(pathToFileURL(join(catalogPath, 'lib', 'index.js')).href)
   const { SESSION_FORMAT_VERSION } = await import(pathToFileURL(join(sessionPath, 'lib', 'index.js')).href)
-  assert.equal(SESSION_FORMAT_VERSION, 3, 'the importer literal fallback must match the installed harness')
+  assert.equal(SESSION_FORMAT_VERSION, 4, 'the importer literal fallback must match the installed 0.2.x harness')
   assert.ok(importedHeader, 'case (a) captured the header handed to create()')
   // Exactly what the jsonl backend does in toHeaderLine() -> create().
   const line = sessionFormatCatalog.encodeCurrentHeader(importedHeader, 0)
@@ -579,7 +579,7 @@ await t('(i) real jsonl backend materialises the imported session', async () => 
     const snap = await sp.stat('hermes-s16')
     assert.ok(snap, 'stat() sees the stored session')
     assert.equal(norm(snap.header.cwd), norm(project), 'the cwd round-trips through the on-disk header')
-    assert.equal(snap.header.version, 3)
+    assert.equal(snap.header.version, 4)
     assert.equal(snap.header.isSeeded, false)
     const read = await sp.open('hermes-s16', 'read')
     const slice = await read.read(0)

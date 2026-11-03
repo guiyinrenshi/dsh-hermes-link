@@ -66,7 +66,7 @@ try {
   check('package.json parses', false, e.message)
 }
 if (pkgJson) {
-  check('package.json name=@tianbuyu-wwx/dsh-hermes-link', pkgJson.name === '@tianbuyu-wwx/dsh-hermes-link', 'name=' + pkgJson.name)
+  check('package.json name=dsh-hermes-link', pkgJson.name === 'dsh-hermes-link', 'name=' + pkgJson.name)
   check('package.json type=module', pkgJson.type === 'module')
   check('package.json main=./index.mjs', pkgJson.main === './index.mjs')
   check('package.json has dsh.bundle.patch', pkgJson.dsh && pkgJson.dsh.bundle && pkgJson.dsh.bundle.patch === './cordis.patch.yml')

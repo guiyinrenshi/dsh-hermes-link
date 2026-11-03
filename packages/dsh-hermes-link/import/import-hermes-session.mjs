@@ -25,6 +25,7 @@ import { existsSync, readFileSync, mkdirSync, statSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { join, dirname, normalize } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { sessionEvents, sessionSeq } from '../services/host-session.mjs'
 
 // The converter is imported DYNAMICALLY with a cache-busting query so edits to
 // request-dump-to-events.mjs take effect on the next import without restarting
@@ -46,8 +47,28 @@ const CONVERTER_URL = pathToFileURL(
 const REQUIRED_PERSISTENCE_METHODS = ['create', 'open', 'stat', 'list']
 const REQUIRED_HANDLE_METHODS = ['append', 'flush', 'close']
 
-/** SessionHeader.version; verified = 3 (SESSION_FORMAT_VERSION in @deepseek-ai/dsh-session). */
-const SESSION_FORMAT_VERSION_FALLBACK = 3
+/**
+ * SessionHeader.version fallback.
+ *
+ * Up to v0.6.11 this was 3 (the value of SESSION_FORMAT_VERSION in the dsh
+ * 0.1.5-rc.2 line this plugin was built against). dsh 0.2.x moved the stored
+ * session format to v4: dsh-session validates `record.version === 4` and
+ * rejects the whole header ("session header version must be 4, got 3"), which
+ * made create()+append() fail for every import on 0.2.x hosts.
+ *
+ * The dynamic import below cannot resolve @deepseek-ai/dsh-session from a
+ * profile install (host packages live in the global dsh tree), so this literal
+ * is what most installs actually use. Keep it current, and rely on the
+ * self-healing retry in writeSession() when a future bump changes the number.
+ */
+const SESSION_FORMAT_VERSION_FALLBACK = 4
+
+/** Extract the host's expected format version from a codec rejection. */
+export function parseExpectedFormatVersion(error) {
+  const text = describeError(error)
+  const m = /version must be (\d+)/i.exec(text) || /expected (?:format )?version (\d+)/i.exec(text)
+  return m ? Number(m[1]) : null
+}
 
 /**
  * Explicit workspace markers written into a prompt, e.g. the DSH file-reference
@@ -870,6 +891,10 @@ export function createImporter({ ctx, hermesHome, workspaceDir, defaultModel }) 
     }
 
     let handle
+    // v0.7.0: set when the write had to be retried after a format-version
+    // refusal, so the success note can say the import self-healed.
+    let versionRetried = false
+    let healedVersion = null
     try {
       handle = await sp.create(header)
     } catch (e) {
@@ -939,14 +964,69 @@ export function createImporter({ ctx, hermesHome, workspaceDir, defaultModel }) 
           ? 'partial artifact removed; the next sync can retry'
           : 'a partial artifact REMAINS: ' + (cleanup.error || 'no artifact path available') +
             (leftover.statError ? ' (stat() also failed: ' + leftover.statError + ')' : '')
-      return {
-        status: 'create_failed',
-        hermesSessionId,
-        sessionId: dshSessionId,
-        cwd: finalCwd,
-        error: 'created the session but failed to write its events: ' + describeError(e),
-        eventCount: allEvents.length,
-        note: leftoverNote + (closeErr ? '; handle close also failed: ' + describeError(closeErr) : ''),
+
+      // v0.7.0 self-healing: the stored session format version is a moving
+      // target (3 on the 0.1.5 line, 4 from dsh 0.2.x on). When the codec
+      // names the version it expects and the header carries another, treat the
+      // bump as a supported host change instead of a plugin bug: drop the
+      // partial artifact, rebuild the header with the host's number and retry
+      // the write exactly once.
+      const expected = parseExpectedFormatVersion(e)
+      if (expected !== null && expected !== version && !versionRetried) {
+        console.warn('[dsh-hermes-link] session format version refused (header ' + version +
+          ', host wants ' + expected + '); retrying this import with version ' + expected)
+        if (leftover && !cleanup.ok) {
+          return {
+            status: 'create_failed',
+            hermesSessionId,
+            sessionId: dshSessionId,
+            cwd: finalCwd,
+            eventCount: allEvents.length,
+            error: 'session header version ' + version + ' was refused (' + describeError(e) +
+              ') and the partial artifact could not be removed for a retry',
+            note: leftoverNote,
+          }
+        }
+        const retryHeader = { ...header, version: expected }
+        let retryHandle = null
+        let retryErr = null
+        try {
+          retryHandle = await sp.create(retryHeader)
+          await retryHandle.append(allEvents)
+          await retryHandle.flush()
+        } catch (re) {
+          retryErr = re
+          try { if (retryHandle) await retryHandle.close() } catch {}
+        }
+        if (retryErr === null) {
+          // The retried handle is the live one now; fall through to the shared
+          // close/attach/success path below.
+          handle = retryHandle
+          versionRetried = true
+          healedVersion = expected
+        } else {
+          return {
+            status: 'create_failed',
+            hermesSessionId,
+            sessionId: dshSessionId,
+            cwd: finalCwd,
+            eventCount: allEvents.length,
+            error: 'header version ' + version + ' was refused (' + describeError(e) +
+              '); the retry with version ' + expected + ' also failed: ' + describeError(retryErr),
+            note: leftoverNote,
+          }
+        }
+      }
+      if (!versionRetried) {
+        return {
+          status: 'create_failed',
+          hermesSessionId,
+          sessionId: dshSessionId,
+          cwd: finalCwd,
+          error: 'created the session but failed to write its events: ' + describeError(e),
+          eventCount: allEvents.length,
+          note: leftoverNote + (closeErr ? '; handle close also failed: ' + describeError(closeErr) : ''),
+        }
       }
     }
     let closeFailure = null
@@ -967,6 +1047,7 @@ export function createImporter({ ctx, hermesHome, workspaceDir, defaultModel }) 
       modelSelection,
       persisted_only: true,
       note: 'persisted to disk; open from the sidebar to resume' +
+        (healedVersion !== null ? ' (header version self-healed to ' + healedVersion + ')' : '') +
         (closeFailure ? ' (handle close failed: ' + describeError(closeFailure) + ')' : ''),
       attach: attachErr ? ('failed: ' + attachErr) : 'ok',
     }
@@ -1293,7 +1374,7 @@ function makeTitle(snippet, hermesSessionId) {
 /** First user text snippet from a live DSH session (for renameAll on old imports). */
 function firstUserSnippetOf(session) {
   try {
-    for (const e of session.events || []) {
+    for (const e of sessionEvents(session)) {
       if (e && e.type === 'user/message' && e.data && e.data.content) {
         const blocks = Array.isArray(e.data.content) ? e.data.content : []
         for (const b of blocks) {

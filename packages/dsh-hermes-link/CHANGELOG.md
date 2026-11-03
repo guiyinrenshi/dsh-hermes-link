@@ -1,4 +1,81 @@
-# @tianbuyu-wwx/dsh-hermes-link
+# dsh-hermes-link
+
+## 0.7.0
+
+### Compatibility release for dsh 0.2.x (verified on 0.2.1-rc.5)
+
+This fork keeps every file channel (consult, outbox, persona, heartbeat,
+session list/mirror) untouched and repairs the paths that hard-failed on a
+0.2.x host.
+
+- **Dispatch works again: the subagents facade moved.** dsh 0.2.x replaced
+  `start / startContinuable / followup` with `startActivation / prompt` (+ an
+  unchanged `interrupt`). `services/host-compat.mjs` now resolves the surface
+  at call time: the native 0.1.x API is used as-is when present, and a bridge
+  maps the old calls onto `startActivation({ delivery: 'caller' | 'parent' })`
+  and `prompt({ mode: 'continuable', delivery: 'queue' })` when only the new
+  facade exists. Previously every dispatch died with
+  `E_DISPATCH_FAILED: ctx.subagents.start is not a function`.
+- **Import writes again: session format v4.** `SESSION_FORMAT_VERSION` moved
+  3 → 4 in 0.2.x, and the header literal stayed at 3, so `create()` succeeded
+  and the first `append()`/`flush()` refused the log
+  (`session header version must be 4, got 3`) — every import reported
+  `create_failed`. The fallback is 4 now, and the write self-heals: when a
+  codec rejection names the expected version, the partial artifact is removed,
+  the header is rebuilt with the host's number and the write is retried once
+  (so a future v5 does not need a release).
+- **Import: canonical v4 event ordering.** A stored v4 log is replayed through
+  the relationship validator on read, and that validator is strict about order:
+  `request/header` must sit inside an open turn, steps are 1-based, an
+  `assistant/message` must advertise its tool calls as `tool-call` content
+  blocks before the log-only `tool/call` events, and every `tool/result` must
+  close an advertised call. The converter emitted the released-v3 order instead
+  (header first, step 0, tool/call before the message), so imports LOOKED fine
+  until the session was opened, then failed with
+  `request/header is outside an open turn`. The order now matches a real DSH
+  log, unresolved calls are closed with an honest placeholder result, and
+  orphan results are dropped and counted.
+- **Import failures are finally readable.** The `import_hermes_session` output
+  schema was `additionalProperties: false` without an `error` member, so the
+  importer's actual failure reason was dropped and users only saw `status`.
+  `error` is part of the contract now.
+- **Import: tool results are first-class tool-role messages.** Format v4
+  replaced the v3 user-role message wrapping one `tool-result` block with
+  `{ role:'tool', toolCallId, source:{kind:'tool',callId}, content:[…] }`, and
+  refuses the old shape on write (`format v4 tool/result at seq N requires a
+  tool-role message`). The converter emits the v4 message now, and a regression
+  test loads the converted events through the host's own `Session.fromRestore`.
+- **followup delivers through the host-adapter face.** 0.2.x's `prompt()` is the
+  remote-control face: it derives its source from `this.ctx.invocation`, so a
+  plugin calling it out of band fails inside the host and surfaces only
+  `subagent prompt failed`. The compat layer uses
+  `sendMessage(liveParent, childId, content, {signal})` (an idle child starts a
+  turn) with `prompt()` as fallback, and reports both failure reasons.
+- **Session logs are read through the host API.** 0.2.x retired
+  `session.events` in favour of `session.snapshotEvents()` plus a `seq` getter,
+  so every direct read returned undefined and the followup reply wait crashed
+  with `Cannot read properties of undefined (reading 'length')`. A
+  `services/host-session.mjs` accessor now serves all twelve call sites
+  (dispatch control/task, continuations, status, inbox, session mirror, import).
+- **The model route is host configuration.** `provider: 'deepseek-official'` +
+  `deepseek-v4-flash/pro` were hardcoded, which only resolves on the upstream
+  author's machine. Default is now to send no `agentOptions` at all (the child
+  inherits the parent's live route); pin tiers with
+  `HERMES_LINK_MODEL_TIERS='{"flash":"coding-plan/qwen3.8-flash"}'` and/or
+  `HERMES_LINK_LLM_PROVIDER`.
+- **Boot no longer dies in the temporal dead zone.** `createConsultClient`
+  read `metrics` before its `const` declaration; on hosts where the error
+  surfaced, `apply()` aborted with `Cannot access 'metrics' before
+  initialization` and nothing mounted.
+- **The bundle patch name is scoped.** The plugin is published unscoped
+  (`dsh-hermes-link`), matching `cordis.patch.yml`, so the
+  disable-this-entry-and-insert-another workaround is no longer needed on any
+  host (upstream issue #3).
+- Known semantic delta, logged once at runtime: 0.2.x has no per-activation
+  `toolFilter`/`persona` ("the selected preset owns persona and tool
+  composition"). Persona is folded into the prompt's leading text block, and
+  the allow-list is passed to the child as advisory guidance — it is NOT
+  enforced by the host.
 
 ## 0.6.11
 

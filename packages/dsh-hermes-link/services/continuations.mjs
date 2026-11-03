@@ -9,6 +9,7 @@ import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { randomBytes } from 'node:crypto'
+import { sessionEvents, sessionSeq } from './host-session.mjs'
 
 /**
  * Set of statuses that mark a continuable child as terminally finished.
@@ -201,7 +202,7 @@ export async function waitForNextReply(ctx, childId, beforeSeq, signal) {
         const agent = ctx.agents.get(childId)
         const session = agent ? agent.session : ctx.sessions.get(childId)
         if (!session) return // waiting for cold-resume to materialize
-        const events = session.events
+        const events = sessionEvents(session)
         for (let i = beforeSeq; i < events.length; i++) {
           const e = events[i]
           if (e && e.type === 'turn/end') {

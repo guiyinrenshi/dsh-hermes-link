@@ -10,18 +10,54 @@
 import schema from '../dispatch-spec.schema.json' with { type: 'json' }
 import { appendAudit } from '../services/audit.mjs'
 import { buildProjectMemorySlice } from '../services/hermes-project-memory.mjs'
+import { resolveSubagents } from '../services/host-compat.mjs'
 import { mcpError } from './_util.mjs'
+import { sessionEvents, sessionSeq } from '../services/host-session.mjs'
 
-export const VERSION = '0.4.0'
+export const VERSION = '0.5.0'
 
 const DEFAULT_MAX_TOKENS  = 4000
 const DEFAULT_DEADLINE_MS = 60000
 const PROVIDER_NAME       = 'spawn'
-const DEFAULT_LLM_PROVIDER = 'deepseek-official'
-const MODEL_BY_TIER = {
-  flash:  'deepseek-v4-flash',
-  pro:    'deepseek-v4-pro',
-  vision: 'deepseek-v4-flash',
+
+// v0.7.0 - the model route is HOST CONFIGURATION, not a plugin constant.
+// Up to v0.6.11 this module hardcoded provider 'deepseek-official' and models
+// 'deepseek-v4-flash/pro', which only exist on the upstream author's machine;
+// every dispatch on any other host died inside LLM route resolution.
+//
+// Defaults: NO agentOptions is sent, so the child inherits the parent's live
+// route (the host default model). Operators can pin tiers with env vars read
+// at plugin load:
+//   HERMES_LINK_MODEL_TIERS='{"flash":"coding-plan/qwen3.8-flash","pro":"coding-plan/qwen3.8-pro"}'
+//   (JSON object; a value "provider/model" or bare "model" - a bare model
+//    keeps HERMES_LINK_LLM_PROVIDER, and without it the parent's provider.)
+//   HERMES_LINK_LLM_PROVIDER='coding-plan'
+const DEFAULT_LLM_PROVIDER = process.env.HERMES_LINK_LLM_PROVIDER || ''
+
+export function modelTiersFromEnv(env) {
+  const raw = (env || process.env).HERMES_LINK_MODEL_TIERS
+  if (!raw) return {}
+  try {
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    return parsed
+  } catch {
+    return {}
+  }
+}
+
+export function resolveDispatchModel(tier, tiers, defaultProvider) {
+  const spec = (tiers || {})[tier || 'flash']
+  if (spec == null) return null
+  if (typeof spec === 'string') {
+    if (spec.includes('/')) {
+      const [provider, ...rest] = spec.split('/')
+      return { provider, model: rest.join('/') }
+    }
+    return { ...(defaultProvider ? { provider: defaultProvider } : {}), model: spec }
+  }
+  if (typeof spec === 'object' && (spec.model || spec.provider)) return spec
+  return null
 }
 
 const dispatchers = new Map()
@@ -44,7 +80,19 @@ export async function handleDispatchTask(ctx, args, deps) {
   }
   dispatchers.set(taskId, { startedAt: Date.now(), status: 'running' })
 
-  const model = MODEL_BY_TIER[args.model_tier || 'flash'] || MODEL_BY_TIER.flash
+  const subagents = resolveSubagents(ctx)
+  const modelTiers = modelTiersFromEnv()
+  const dispatchModel = resolveDispatchModel(args.model_tier || 'flash', modelTiers, DEFAULT_LLM_PROVIDER)
+  const model = dispatchModel
+    ? (dispatchModel.provider ? dispatchModel.provider + '/' + dispatchModel.model : String(dispatchModel.model))
+    : 'inherited(parent)'
+  const childAgentOptions = {}
+  if (dispatchModel) {
+    if (dispatchModel.provider) childAgentOptions.provider = dispatchModel.provider
+    if (dispatchModel.model) childAgentOptions.model = dispatchModel.model
+  }
+  if (Number.isInteger(args.max_tokens) && args.max_tokens > 0) childAgentOptions.maxTokens = args.max_tokens
+  else childAgentOptions.maxTokens = DEFAULT_MAX_TOKENS
   const mode = args.mode === 'continuable' ? 'continuable' : 'one-shot'
   const provider = (args.provider === 'fork' || args.provider === 'spawn')
     ? args.provider
@@ -81,7 +129,7 @@ export async function handleDispatchTask(ctx, args, deps) {
 
   if (mode === 'continuable') {
     try {
-      const spawnResult = await ctx.subagents.startContinuable({
+      const spawnResult = await subagents.startContinuable({
         provider,
         label: 'dsh-hermes-link:' + taskId,
         signal: controller.signal,
@@ -92,11 +140,7 @@ export async function handleDispatchTask(ctx, args, deps) {
           signal: controller.signal,
           toolFilter: { allow: [args.skill] },
           persona,
-          agentOptions: {
-            provider: DEFAULT_LLM_PROVIDER,
-            model,
-            maxTokens: args.max_tokens || DEFAULT_MAX_TOKENS,
-          },
+          agentOptions: childAgentOptions,
           maxDepth: 1,
         },
       })
@@ -184,14 +228,14 @@ export async function handleDispatchTask(ctx, args, deps) {
   // one-shot path
   let runResult, error, run
   try {
-    run = await ctx.subagents.start(PROVIDER_NAME, {
+    run = await subagents.start(PROVIDER_NAME, {
       label: 'dsh-hermes-link:' + taskId,
       prompt: [{ type: 'text', text: args.task }],
       parent,
       signal: controller.signal,
       toolFilter: { allow: [args.skill] },
       persona,
-      agentOptions: { provider: DEFAULT_LLM_PROVIDER, model, maxTokens: args.max_tokens || DEFAULT_MAX_TOKENS },
+      agentOptions: childAgentOptions,
       maxDepth: 1,
     })
     runResult = await run.result
@@ -387,8 +431,8 @@ export function formatPersona(args, foundationSlice, opts) {
 
 export function extractRecentParentTurns(parent, n) {
   if (!n || n <= 0) return []
-  if (!parent || !parent.session || !Array.isArray(parent.session.events)) return []
-  const events = parent.session.events
+  if (!parent || !parent.session) return []
+  const events = sessionEvents(parent.session)
   const turns = []
   let lastTurnEnd = null
   for (let i = events.length - 1; i >= 0; i--) {

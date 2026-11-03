@@ -10,6 +10,7 @@
 // dispatch_status tool. Read-only; no side effects.
 
 import { readFileSync } from 'node:fs'
+import { sessionEvents, sessionSeq } from './host-session.mjs'
 
 /**
  * Read the last N audit lines (default 500). Returns parsed objects.
@@ -169,7 +170,7 @@ export function readChildSessionTail(ctx, childId, opts) {
       child_id: childId,
     }
   }
-  const events = (agent.session && agent.session.events) || []
+  const events = sessionEvents(agent && agent.session)
   const since = Number.isInteger(opts.since) ? Math.max(0, opts.since) : 0
   const limit = Number.isInteger(opts.limit) ? Math.min(opts.limit, 1000) : events.length
   const tail = events.slice(since, since + limit)

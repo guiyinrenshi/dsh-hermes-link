@@ -24,6 +24,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, sta
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { defineTool } from '@deepseek-ai/dsh-tools'
+import { sessionEvents, sessionSeq } from './host-session.mjs'
 
 const MAX_INBOX_CHARS   = 8192   // cap for rendered inbox block
 const MAX_INJECT_TURNS  = 20     // cap on Hermes turns injected into a dsh session log
@@ -131,8 +132,8 @@ export function loadHermesInbox() {
 }
 
 export function sessionHasHermesMarker(session) {
-  if (!session || !Array.isArray(session.events)) return false
-  for (const e of session.events) {
+  if (!session) return false
+  for (const e of sessionEvents(session)) {
     // Accept both eras of the marker reason ('hermes-foundation:' pre-migration,
     // 'dsh-hermes-link:' current) so already-injected sessions are never re-injected.
     if (e && e.type === 'compaction/start' && e.data && typeof e.data.reason === 'string'
@@ -389,7 +390,7 @@ export function registerInboxTools(ctx) {
           suggestion: 'this tool only inspects the current main session; open a DSH session and try again',
         }
       }
-      const events = agent.session.events
+      const events = sessionEvents(agent && agent.session)
       const header = agent.session.header || {}
       let userInjected = 0
       let asstInjected = 0

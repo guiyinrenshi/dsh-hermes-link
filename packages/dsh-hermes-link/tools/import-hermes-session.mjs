@@ -35,6 +35,10 @@ export function createImportHermesSessionTool({ importer }) {
           model: { type: 'string' },
           attach: { type: 'string' },
           note: { type: 'string' },
+          // v0.7.0: the importer's failure reason used to be dropped by the
+          // additionalProperties:false contract, so a failed import reported
+          // only its status and a note. Carry it through.
+          error: { type: 'string' },
         },
       },
       render(_args, value) {
@@ -60,6 +64,7 @@ export function createImportHermesSessionTool({ importer }) {
         ...(typeof r.model === 'string' ? { model: r.model } : {}),
         ...(typeof r.attach === 'string' ? { attach: r.attach } : {}),
         ...(typeof r.note === 'string' ? { note: r.note } : {}),
+        ...(typeof r.error === 'string' ? { error: r.error } : {}),
       }
     },
   })

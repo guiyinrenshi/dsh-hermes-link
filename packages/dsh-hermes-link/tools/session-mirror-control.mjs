@@ -9,6 +9,7 @@
 // action=disable to stop. action=status reports the current state.
 
 import { defineTool } from '@deepseek-ai/dsh-tools'
+import { sessionEvents, sessionSeq } from '../services/host-session.mjs'
 
 export function createSessionMirrorControlTool({ sessionMirror }) {
   return defineTool({
@@ -75,7 +76,7 @@ export function createSessionMirrorControlTool({ sessionMirror }) {
       }
       try {
         if (action === 'enable') {
-          const events = args.backfill && agent && agent.session ? (agent.session.events || []) : undefined
+          const events = args.backfill && agent && agent.session ? sessionEvents(agent.session) : undefined
           const status = sessionMirror.enable(sessionId, {
             events,
             redact: args.redact !== false,

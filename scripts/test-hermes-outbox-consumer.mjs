@@ -499,7 +499,8 @@ await t('consult purge: only marked-abandoned tickets go, evidence stays', async
     writeFileSync(join(client.inboxDir, abandoned + '.expired.json'), '{}', 'utf8')
     writeNotification(client.inboxDir, old + '-' + answered + '.json', { ticket: answered, ts: old, kind: 'consult', prompt: 'old but answered' })
     writeFileSync(join(client.inboxDir, answered + '.answered.json'), '{}', 'utf8')
-    writeNotification(client.inboxDir, Date.now() + '-' + fresh + '.json', { ticket: fresh, ts: Date.now(), kind: 'consult', prompt: 'live' })
+    const freshTs = Date.now()
+    writeNotification(client.inboxDir, freshTs + '-' + fresh + '.json', { ticket: fresh, ts: freshTs, kind: 'consult', prompt: 'live' })
 
     const dry = client.purgeExpiredTickets({ apply: false })
     assert.equal(dry.candidates.length, 1, 'only the marked-abandoned ticket qualifies')
@@ -513,7 +514,7 @@ await t('consult purge: only marked-abandoned tickets go, evidence stays', async
     assert.equal(existsSync(join(client.inboxDir, old + '-' + abandoned + '.json')), false)
     assert.equal(existsSync(join(client.inboxDir, abandoned + '.expired.json')), false, 'the stale marker goes with it')
     assert.equal(existsSync(join(client.inboxDir, old + '-' + answered + '.json')), true, 'answered evidence stays')
-    assert.equal(existsSync(join(client.inboxDir, Date.now() + '-' + fresh + '.json')), false, 'the live ticket is untouched (name uses its own ts)')
+    assert.equal(existsSync(join(client.inboxDir, freshTs + '-' + fresh + '.json')), true, 'the live ticket is untouched')
   } finally { env.cleanup() }
 })
 

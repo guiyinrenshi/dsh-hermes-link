@@ -10,10 +10,12 @@
 
 import { appendAudit } from '../services/audit.mjs'
 import { waitForNextReply } from '../services/continuations.mjs'
+import { resolveSubagents } from '../services/host-compat.mjs'
 import { mcpError } from './_util.mjs'
 import { extractOutputText, measureRealTokens, pickParentAgent } from './dispatch-task.mjs'
+import { sessionEvents, sessionSeq } from '../services/host-session.mjs'
 
-const VERSION = '0.4.0'
+const VERSION = '0.5.0'
 
 export async function handleDispatchFollowup(ctx, args, deps) {
   const { continuations, outbox, sseBroker } = deps
@@ -34,7 +36,7 @@ export async function handleDispatchFollowup(ctx, args, deps) {
 
   let messageId
   try {
-    messageId = await ctx.subagents.followup(liveParent, childId, args.content, {
+    messageId = await resolveSubagents(ctx).followup(liveParent, childId, args.content, {
       signal: controller.signal,
       source: { kind: 'user' },
     })
@@ -44,7 +46,7 @@ export async function handleDispatchFollowup(ctx, args, deps) {
   }
 
   const reloadedAgent = ctx.agents.get(childId)
-  const beforeSeq = reloadedAgent ? reloadedAgent.session.seq : 0
+  const beforeSeq = reloadedAgent ? sessionSeq(reloadedAgent.session) : 0
 
   let reply
   try {
@@ -136,7 +138,7 @@ export async function handleDispatchInterrupt(ctx, args, deps) {
   }
   const parent = ctx.agents.get(entry.parent_agent_id) || pickParentAgent(ctx)
   try {
-    ctx.subagents.interrupt(childId, { kind: 'ancestor', agent: parent })
+    resolveSubagents(ctx).interrupt(childId, { kind: 'ancestor', agent: parent })
   } catch (e) {
     return { _error: mcpError(null, 'E_SPAWN_FAILED', 'interrupt failed: ' + (e && e.message || e)) }
   }
@@ -182,7 +184,7 @@ export async function handleDispatchGet(ctx, args, deps) {
   if (!agent) {
     return { _error: mcpError(null, 'E_UNKNOWN_CHILD', 'child agent not live in current dsh session; dispatch_list shows persisted metadata') }
   }
-  const events = agent.session.events
+  const events = sessionEvents(agent.session)
   const since = Number.isInteger(args.since) ? Math.max(0, args.since) : 0
   const limit = Number.isInteger(args.limit) ? Math.min(args.limit, 1000) : events.length
   const tail = events.slice(since, since + limit)

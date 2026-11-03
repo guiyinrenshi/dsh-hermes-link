@@ -181,7 +181,7 @@ await t('infer original workspace from dump when state.db cwd is null', async ()
   const header = persistence.headers.get('hermes-s1')
   assert.equal(normalize(header.cwd), normalize(projectA))
   // D1 header contract
-  assert.equal(header.version, 3, 'header.version must be SESSION_FORMAT_VERSION')
+  assert.equal(header.version, 4, 'header.version must be SESSION_FORMAT_VERSION (4 on dsh 0.2.x)')
   assert.equal(header.isSeeded, false, 'header.isSeeded is required')
   assert.equal(header.delegationDepth, 0)
   // the write handle from create() received the events
@@ -202,7 +202,7 @@ await t('migrate safe hermes-workspace session to inferred original workspace', 
   writeDump('s2', projectB)
 
   const oldHeader = {
-    type: 'session', version: 3, id: 'hermes-s2', createdAt: 1, delegationDepth: 0,
+    type: 'session', version: 4, id: 'hermes-s2', createdAt: 1, delegationDepth: 0,
     isSeeded: false, cwd: workspaceDir, agentPreset: 'hermes-imported',
   }
   const oldEvents = [
@@ -229,7 +229,7 @@ await t('migrate safe hermes-workspace session to inferred original workspace', 
   assert.equal(r.status, 'created')
   assert.equal(normalize(r.cwd), normalize(projectB))
   assert.equal(normalize(persistence.headers.get('hermes-s2').cwd), normalize(projectB))
-  assert.equal(persistence.headers.get('hermes-s2').version, 3)
+  assert.equal(persistence.headers.get('hermes-s2').version, 4)
   assert.equal(existsSync(artifactPath), false, 'the stale artifact was removed before the rebuild')
   assert.equal(existsSync(join(base, 'hermes-s2.jsonl.zstd')), true, 'the rebuilt session was materialized')
 })

@@ -14,6 +14,7 @@
 
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { redactEvent } from '../services/redact.mjs'
+import { sessionEvents, sessionSeq } from '../services/host-session.mjs'
 
 export { redactEvent } from '../services/redact.mjs'
 
@@ -49,7 +50,7 @@ export function createMirrorSessionToHermesTool({ outbox }) {
       if (!agent || !agent.session || !outbox) {
         return { ok: false, session_id: null, mirrored: 0, total_events: 0, tail: 0, redacted: false, redacted_blocks: 0, note: 'no live agent/session available' }
       }
-      const events = agent.session.events || []
+      const events = sessionEvents(agent && agent.session)
       const tailN = (args.tail && args.tail > 0) ? Math.min(args.tail, events.length) : events.length
       const slice = events.slice(events.length - tailN)
       const redact = args.redact !== false // default true

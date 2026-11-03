@@ -13,6 +13,7 @@
 
 import { readdirSync, readFileSync, existsSync, mkdirSync, renameSync, watch } from 'node:fs'
 import { join } from 'node:path'
+import { resolveSubagents } from './host-compat.mjs'
 
 let metricsSink = null
 export function setMetricsSink(m) { metricsSink = m }
@@ -151,7 +152,7 @@ export function createAmendWatcher({ hermesHome, ctx, continuations, pickParentA
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(new Error('amend deliver deadline')), 10_000)
       try {
-        await ctx.subagents.followup(parent, entry.child_id, content, {
+        await resolveSubagents(ctx).followup(parent, entry.child_id, content, {
           signal: controller.signal,
           source: { kind: 'user' },
         })

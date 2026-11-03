@@ -7,9 +7,14 @@
     "en": "Bidirectional bridge between Hermes Agent and DeepSeek Harness. Hermes dispatches focused tasks via JSON-RPC (one-shot or continuable, nonce-bound amend, secret-bound consult reply); DSH spawns sub-agents and lets you continue any Hermes session as a native DSH session in the sidebar.",
     "zh": "Hermes Agent 与 DeepSeek Harness 的双向桥接：Hermes 通过 JSON-RPC 派任务（一次性或可持续），DSH 启动子 agent 执行，并允许用户把 Hermes 会话作为原生 DSH 会话在侧边栏继续对话。"
   },
-  "npm": "@tianbuyu-wwx/dsh-hermes-link",
+  "npm": "dsh-hermes-link",
+  "version": "0.7.0",
   "stars": null,
   "downloads": null,
-  "install": "npm:@tianbuyu-wwx/dsh-hermes-link",
-  "added": "2026-08-23"
+  "install": "npm:dsh-hermes-link",
+  "added": "2026-08-23",
+  "fork": {
+    "of": "@tianbuyu-wwx/dsh-hermes-link",
+    "reason": "dsh 0.2.x compatibility: subagents facade (startActivation/prompt), session format v4 import, host-configurable model routes, TDZ boot fix, scoped-name bundle fix"
+  }
 }

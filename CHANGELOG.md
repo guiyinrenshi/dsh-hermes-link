@@ -24,6 +24,50 @@ These commits existed and the work shipped through subsequent published versions
 
 ---
 
+## [0.7.0] — 2026-11-03
+
+### dsh 0.2.x compatibility release (verified on dsh 0.2.1-rc.5)
+
+This is a fork of `@tianbuyu-wwx/dsh-hermes-link` 0.6.11 published as the unscoped
+`dsh-hermes-link` package. Every file-based channel (consult, outbox, persona,
+heartbeat, session list/mirror) is unchanged; the paths that hard-failed on a
+0.2.x host are repaired.
+
+### Fixed
+
+- **Dispatch: the subagents facade was replaced.** 0.2.x replaced `start /
+  startContinuable / followup` with `startActivation / prompt` (and kept
+  `interrupt`). `services/host-compat.mjs` resolves the surface at call time and
+  bridges the old calls onto `startActivation({ delivery: 'caller' | 'parent' })`
+  and `prompt({ mode: 'continuable', delivery: 'queue' })`. Previously every
+  dispatch died with `E_DISPATCH_FAILED: ctx.subagents.start is not a function`.
+- **Import: session format v4.** `SESSION_FORMAT_VERSION` moved 3 → 4, so
+  `create()` succeeded but the first `append()`/`flush()` refused the log
+  (`session header version must be 4, got 3`) and every import reported
+  `create_failed`. The fallback is 4 now and the write self-heals: a codec
+  rejection naming the expected version rebuilds the header and retries once.
+- **Import failures are readable**: `import_hermes_session`'s output schema now
+  carries `error` (it was `additionalProperties: false` without it, so the
+  actual reason was dropped and only `status` reached the user).
+- **The model route is host configuration**: `deepseek-official` +
+  `deepseek-v4-flash/pro` were hardcoded (they only resolve on the upstream
+  author's machine). Default is to send no `agentOptions` (the child inherits
+  the parent's live route); pin tiers with `HERMES_LINK_MODEL_TIERS` /
+  `HERMES_LINK_LLM_PROVIDER`.
+- **Boot TDZ fix**: `createConsultClient` read `metrics` before its `const`
+  declaration, aborting `apply()` with `Cannot access 'metrics' before
+  initialization` on hosts where the error surfaced.
+- **Bundle patch name**: the package is now unscoped and matches its
+  `cordis.patch.yml` entry, so the disable-and-reinsert workaround is no longer
+  needed (upstream issue #3).
+
+### Known semantic delta
+
+- 0.2.x has no per-activation `toolFilter` / `persona` ("the selected preset
+  owns persona and tool composition"). Persona is folded into the prompt's
+  leading text block; the allow-list is passed to the child as advisory
+  guidance and is NOT enforced by the host (logged once at runtime).
+
 ## [0.6.11] — 2026-09-18
 
 ### Fixed
