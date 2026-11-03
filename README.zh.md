@@ -1,5 +1,11 @@
 # dsh-hermes-link
 
+> **这是兼容性 fork。** 上游
+> [`@tianbuyu-wwx/dsh-hermes-link`](https://github.com/Tianbuyu-wwx/dsh-hermes-link)
+> 0.6.11 面向 dsh 0.1.5-rc.2，在 dsh 0.2.x 上派单/导入/followup 均不可用。本 fork
+> （npm 包名 **`dsh-hermes-link`**）修复了 0.2.x 兼容、合并了跨机器能力并补齐部署文档。
+> 变更清单见 [FORK-NOTES.md](FORK-NOTES.md)。
+
 [![npm 版本](https://img.shields.io/npm/v/@Tianbuyu-wwx/dsh-hermes-link)](https://www.npmjs.com/package/@Tianbuyu-wwx/dsh-hermes-link)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node >=20](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](package.json)

@@ -1,5 +1,12 @@
 # dsh-hermes-link
 
+> **This is a compatibility fork.** Upstream
+> [`@tianbuyu-wwx/dsh-hermes-link`](https://github.com/Tianbuyu-wwx/dsh-hermes-link)
+> 0.6.11 targets dsh 0.1.5-rc.2 and no longer works on dsh 0.2.x. This fork
+> (published unscoped as **`dsh-hermes-link`**) fixes dispatch, import, followup
+> and boot on dsh 0.2.x, ports cross-machine support, and documents deployment.
+> See [FORK-NOTES.md](FORK-NOTES.md) for the full list of changes.
+
 [![npm version](https://img.shields.io/npm/v/@Tianbuyu-wwx/dsh-hermes-link)](https://www.npmjs.com/package/@Tianbuyu-wwx/dsh-hermes-link)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node >=20](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](package.json)
