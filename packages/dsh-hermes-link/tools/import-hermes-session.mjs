@@ -39,6 +39,7 @@ export function createImportHermesSessionTool({ importer }) {
           // additionalProperties:false contract, so a failed import reported
           // only its status and a note. Carry it through.
           error: { type: 'string' },
+          projection_cache: { type: 'string' },
         },
       },
       render(_args, value) {
@@ -65,6 +66,7 @@ export function createImportHermesSessionTool({ importer }) {
         ...(typeof r.attach === 'string' ? { attach: r.attach } : {}),
         ...(typeof r.note === 'string' ? { note: r.note } : {}),
         ...(typeof r.error === 'string' ? { error: r.error } : {}),
+        ...(typeof r.projection_cache === 'string' ? { projection_cache: r.projection_cache } : {}),
       }
     },
   })

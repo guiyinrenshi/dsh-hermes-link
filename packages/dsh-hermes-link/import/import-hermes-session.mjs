@@ -740,8 +740,10 @@ export function createImporter({ ctx, hermesHome, workspaceDir, defaultModel }) 
       const cwdChanged = typeof finalCwd === 'string' && finalCwd.length > 0 && !samePath(existingCwd, finalCwd)
       if (!cwdChanged) {
         const attachErr = await attachToWorkspace(ctx, finalCwd || existingCwd, dshSessionId)
+        const projectionCache = await warmProjectionCache(ctx, sp, dshSessionId)
         return {
           status: 'already_imported',
+          projection_cache: projectionCache,
           hermesSessionId,
           sessionId: dshSessionId,
           eventCount: typeof existing.eventCount === 'number' ? existing.eventCount : null,
@@ -1034,6 +1036,10 @@ export function createImporter({ ctx, hermesHome, workspaceDir, defaultModel }) 
 
     // Ensure the workspace exists + session attached (sidebar grouping).
     const attachErr = await attachToWorkspace(ctx, finalCwd, dshSessionId)
+    // The listing's title/summary comes from the projection cache; write the row
+    // now so an unopened import is not listed as unnamed.
+    const projectionCacheStatus = await warmProjectionCache(ctx, sp, dshSessionId,
+      healedVersion !== null ? { ...header, version: healedVersion } : header, allEvents)
 
     return {
       status: 'created',
@@ -1045,6 +1051,7 @@ export function createImporter({ ctx, hermesHome, workspaceDir, defaultModel }) 
       title,
       model: info.model || null,
       modelSelection,
+      projection_cache: projectionCacheStatus,
       persisted_only: true,
       note: 'persisted to disk; open from the sidebar to resume' +
         (healedVersion !== null ? ' (header version self-healed to ' + healedVersion + ')' : '') +
@@ -1058,6 +1065,43 @@ export function createImporter({ ctx, hermesHome, workspaceDir, defaultModel }) 
    * takes write ownership; the handle is always closed.
    * @returns {Promise<readonly object[]>}
    */
+  /**
+   * Warm the host's projection cache for a session written straight to
+   * persistence. The sidebar listing reads the LAST checkpoint from
+   * ctx.sessionProjectionCache (a zero-I/O hint), so a session that was never
+   * opened shows as unnamed until its cache row exists. coldSnapshot() replays
+   * the complete log and writes that row back, which is exactly the cold-read
+   * path the GUI would take on open - just done at import time.
+   * @returns {'ok'|'skipped'|'unsupported'|string} status for the tool result.
+   */
+  async function warmProjectionCache(ctxArg, sp, id, knownHeader, knownEvents) {
+    // Optional dependency: this plugin does not declare sessionProjectionCache in
+    // its inject list, and cordis throws "cannot get property ... without inject"
+    // on plain property access. ctx.get() is the documented escape hatch for an
+    // optional service and returns undefined when it is not mounted.
+    let cache
+    try {
+      cache = ctxArg && typeof ctxArg.get === 'function'
+        ? ctxArg.get('sessionProjectionCache')
+        : ctxArg && ctxArg.sessionProjectionCache
+    } catch { cache = undefined }
+    if (!cache || typeof cache.coldSnapshot !== 'function') return 'unsupported'
+    try {
+      let header = knownHeader || null
+      let events = knownEvents || null
+      if (!header) {
+        const snap = await sp.stat(id)
+        header = (snap && snap.header) || null
+      }
+      if (!events) events = await readStoredEvents(sp, id)
+      if (!header || !Array.isArray(events) || events.length === 0) return 'skipped'
+      cache.coldSnapshot(header, 0, events)
+      return 'ok'
+    } catch (e) {
+      return 'failed: ' + describeError(e)
+    }
+  }
+
   async function readStoredEvents(sp, id) {
     const handle = await sp.open(id, 'read')
     try {

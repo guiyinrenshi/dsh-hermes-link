@@ -179,7 +179,13 @@ function makeStub(opts) {
 }
 
 function ctxFor(stub) {
+  const projectionCache = {
+    calls: [],
+    coldSnapshot(meta, cut, events) { this.calls.push({ meta, cut, count: (events || []).length }) },
+  };
   return {
+    sessionProjectionCache: projectionCache,
+    projectionCache,
     sessionPersistence: stub,
     sessions: null,
     workspaceRegistry: { create: async () => ({ attachSession: async () => {} }) },
@@ -203,7 +209,8 @@ await t('(a) fresh import -> status created; write handle got the events (D1)', 
   mkdirSync(projectA, { recursive: true })
   cdDump(hermesHome, 's1', projectA)
   const stub = makeStub({ dir: base })
-  const importer = createImporter({ ctx: ctxFor(stub), hermesHome, workspaceDir: join(base, 'ws') })
+  const ctx = ctxFor(stub)
+  const importer = createImporter({ ctx, hermesHome, workspaceDir: join(base, 'ws') })
   const r = await silent(() => importer.importSession('s1'))
   assert.equal(r.status, 'created')
   assert.equal(norm(r.cwd), norm(projectA))
@@ -225,6 +232,12 @@ await t('(a) fresh import -> status created; write handle got the events (D1)', 
   assert.equal(write.appended.length, r.eventCount, 'handle.append() received every event')
   assert.deepEqual(write.appended.map((e) => e.seq), write.appended.map((_, i) => i), 'seq stays contiguous from 0')
   assert.equal(write.flushed, true, 'handle.flush() was called')
+  // The sidebar listing reads its title from the projection cache, so an import
+  // that never warms the cache is listed as unnamed until opened.
+  assert.equal(r.projection_cache, 'ok', 'import warms the projection cache')
+  assert.equal(ctx.projectionCache.calls.length, 1, 'coldSnapshot() called exactly once')
+  assert.equal(ctx.projectionCache.calls[0].count, r.eventCount, 'the whole log is replayed')
+  assert.equal(ctx.projectionCache.calls[0].meta.id, 'hermes-s1')
   assert.equal(write.closed, true, 'handle.close() was called')
 })
 
