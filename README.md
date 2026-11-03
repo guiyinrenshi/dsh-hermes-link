@@ -7,6 +7,8 @@
 > and boot on dsh 0.2.x, ports cross-machine support, and documents deployment.
 > See [FORK-NOTES.md](FORK-NOTES.md) for the full list of changes.
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 [![npm version](https://img.shields.io/npm/v/dsh-hermes-link)](https://www.npmjs.com/package/dsh-hermes-link)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node >=20](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](package.json)

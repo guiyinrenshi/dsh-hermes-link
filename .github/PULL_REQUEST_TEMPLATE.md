@@ -48,7 +48,7 @@ description **and** open a tracking issue.
 
 ## Documentation impact
 
-<!-- Which docs/*.md, README.md, or README.zh.md sections need to update? -->
+<!-- Which docs/*.md, README.md, or README.zh-CN.md sections need to update? -->
 <!-- Cross-check against [docs/README.md](docs/README.md) (the doc index). -->
 
 ## Changeset

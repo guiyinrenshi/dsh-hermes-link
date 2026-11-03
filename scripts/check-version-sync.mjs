@@ -103,13 +103,13 @@ if (existsSync(readmePath)) {
   skip('README.md')
 }
 
-// 8. root README.zh.md (if present)
-const readmeZhPath = join(root, 'README.zh.md')
+// 8. root README.zh-CN.md (if present)
+const readmeZhPath = join(root, 'README.zh-CN.md')
 if (existsSync(readmeZhPath)) {
   const txt = readFileSync(readmeZhPath, 'utf8')
   const m = txt.match(/v(\d+\.\d+\.\d+)/)
-  if (m) check('README.zh.md version mention', m[1], truth)
-  else skip('README.zh.md version mention')
+  if (m) check('README.zh-CN.md version mention', m[1], truth)
+  else skip('README.zh-CN.md version mention')
 }
 
 console.log('')

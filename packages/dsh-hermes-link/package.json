@@ -30,7 +30,8 @@
     "docs",
     "CHANGELOG.md",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "README.zh-CN.md"
   ],
   "license": "MIT",
   "keywords": [

@@ -147,7 +147,7 @@ See `.github/PULL_REQUEST_TEMPLATE.md`. The template asks for:
 
 ## Documentation style
 
-- `README.md` is canonical English. `README.zh.md` is a faithful mirror — keep them in lockstep when either changes.
+- `README.md` is canonical English. `README.zh-CN.md` is a faithful mirror — keep them in lockstep when either changes.
 - `docs/*.md` is technical detail. Use Markdown headings, fenced code blocks (with language hints), and tables for structured comparisons.
 - Avoid future tense; write as if the feature is already shipping.
 - Reference source paths as `packages/dsh-hermes-link/services/foo.mjs` (clickable in Web-rendered READMEs).

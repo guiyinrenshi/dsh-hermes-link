@@ -7,7 +7,7 @@ This index points at every document in this repository. If you're new here, read
 | Doc | Audience |
 |---|---|
 | [README.md](../README.md) | Everyone — features, quickstart, architecture, FAQ |
-| [README.zh.md](../README.zh.md) | Chinese mirror of README |
+| [README.zh-CN.md](../README.zh-CN.md) | Chinese mirror of README |
 | [CHANGELOG.md](../CHANGELOG.md) | Everyone — what changed in each release |
 | [CONTRIBUTING.md](../CONTRIBUTING.md) | Contributors — dev setup, commit conventions, PR workflow |
 | [SECURITY.md](../SECURITY.md) | Reporters + maintainers — disclosure policy, threat model |

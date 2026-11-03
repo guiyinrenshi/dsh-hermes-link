@@ -14,7 +14,7 @@
 > 当前版本：v0.7.0
 > **Hermes Agent** 与 **DeepSeek Harness (DSH)** 的双向桥接：Hermes 通过 `POST /mcp/collab` JSON-RPC 派任务（一次性或可持续），DSH 启动子 agent 执行、返回真实测量的 token，并允许你**把任意 Hermes 会话作为原生 DSH 会话继续**。
 
-[English README](README.md) | 中文
+[English](README.md) | **简体中文**
 
 ---
 
@@ -27,7 +27,7 @@
 - [配置](#配置)
 - [安全模型](#安全模型)
 - [路线图](#路线图)
-- [FAQ](#faq)
+- [常见问题](#常见问题)
 - [许可证](#许可证)
 - [相关文档](#相关文档)
 
@@ -231,7 +231,7 @@ node scripts/verify-install.mjs
 
 ---
 
-## FAQ
+## 常见问题
 
 **Q：Hermes 端需要为 v0.3.4+ 升级什么？**
 需要。amend nonce 和 consult reply_secret 是破坏性变更。见 [docs/hermes-upgrade-v0.3.4.md](docs/hermes-upgrade-v0.3.4.md) 与参考实现 `scripts/hermes-gateway-demo.py`。
