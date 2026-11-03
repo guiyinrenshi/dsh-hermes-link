@@ -8,6 +8,7 @@ when_to_use: |
     - import_hermes_session        — convert a Hermes session archive to a live DSH session, seed it with full history
     - load_hermes_persona          — load Hermes SOUL.md + relevant config slices into the current session (v0.2.3: NO LONGER reads MEMORY.md)
     - load_hermes_project_memory   — cwd-scoped Hermes MEMORY.md loader (matches ONLY this project's Hermes sessions)
+    - read_hermes_memory           — v0.7.0: read Hermes long-term memory (memories/MEMORY.md) + user profile (memories/USER.md) verbatim; the only way to reach them when Hermes runs on another host (no cwd overlap)
     - consult_hermes               — ask Hermes a question (file-based async; secret-suffixed reply required since v0.2.2)
     - mirror_session_to_hermes     — opt-in V4 session mirror with secret-pattern redaction (v0.2.2; cookies + JWTs + API keys covered since v0.2.3)
 - session_mirror                — v0.6.0 mirror switch: enable/disable per-session mirroring to Hermes with redaction. The default policy HERMES_LINK_MIRROR_POLICY=scoped auto-enables it for a session whose cwd matches a real Hermes project; an explicit disable is a durable opt-out.
@@ -117,6 +118,7 @@ DSH-side plugin that makes Hermes Agent and DeepSeek Harness a single, bidirecti
 | `import_hermes_session` | Convert one archive to a live DSH session via `ctx.sessions.create(id, { seed, meta })`. Idempotent on session id. |
 | `load_hermes_persona` | Inject Hermes persona into current session. `scope: all\|soul\|memory\|config`. |
 | `load_hermes_project_memory` | cwd-scoped Hermes MEMORY.md loader. Returns ONLY lines whose context matches `agent.session.header.cwd`. Empty when no Hermes state.db session matches. |
+| `read_hermes_memory` | v0.7.0. Reads `memories/MEMORY.md` and `memories/USER.md` whole (per-file `max_bytes` cap, default 32 KiB). Read-only; needed for cross-machine setups where the cwd never overlaps. |
 | `consult_hermes` | Async file-based question to Hermes. v0.2.2: reply file MUST carry the secret suffix `<ticket>-<secret>.json`; legacy `<ticket>.json` is accepted only when `HERMES_LINK_TRUST_LEGACY=1`. |
 | `mirror_session_to_hermes` | Opt-in V4 mirror (v0.2.2). Walks the current DSH session's events, redacts API keys / tokens / passwords / PEM / JWTs by default (`redact: false` to opt out), appends to `Hermes Home/inbox/dsh/session-mirror/<sid>.jsonl`. NOT automatic. |
 | `session_mirror` | Automatic V4 mirror control (v0.6.0). `action=enable` starts writing every new event of this DSH session to `Hermes Home/inbox/dsh/session-mirror/<sid>.jsonl` with redaction; `action=disable` stops (durable opt-out - the policy will not silently re-enable it); `action=status` reports state, including the resolved `policy`, whether the enable was `auto`, and how many events the echo/noise guard skipped. Auto-enable is governed by `HERMES_LINK_MIRROR_POLICY` (default `scoped`). |

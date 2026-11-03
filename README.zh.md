@@ -59,6 +59,7 @@ Hermes 是任务编排器 —— 规划工作、选择 skill、加载知识切�
 | `import_hermes_session` | 把 Hermes 档案转成 DSH 会话 —— **侧边栏点击即可继续** |
 | `load_hermes_persona` | 把 Hermes SOUL.md + config 注入当前会话（v0.2.3 起**不再读 MEMORY.md**）|
 | `load_hermes_project_memory` | cwd-scoped Hermes MEMORY.md 加载（只匹配本项目的 Hermes 会话） |
+| `read_hermes_memory` | 读取 Hermes 长期记忆（`memories/MEMORY.md`）与用户画像（`memories/USER.md`），只读、单文件字节上限。0.7.0 新增，用于 Hermes 在另一台机器、cwd 不重叠的跨机器场景。 |
 | `consult_hermes` | 问 Hermes 问题（文件通道 + secret 后缀回复，v0.3.4+） |
 | `mirror_session_to_hermes` | 手动 mirror 当前 DSH 会话到 Hermes（含 cookie / JWT / API key / set-cookie / session_id redact，v0.2.3+） |
 | `session_mirror` | v0.6.0 opt-in 自动 mirror 开关：对当前 DSH 会话 `enable` / `disable` / `status`（默认关闭，自动脱敏） |

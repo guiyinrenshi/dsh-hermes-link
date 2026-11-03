@@ -59,6 +59,7 @@ Earlier we ran this as three separate plugins (`hermes-foundation`, `hermes-ones
 | `import_hermes_session` | convert a Hermes archive to a live DSH session — **click-to-resume** |
 | `load_hermes_persona` | inject Hermes SOUL.md + config into the current session (v0.2.3: no longer reads MEMORY.md) |
 | `load_hermes_project_memory` | cwd-scoped Hermes MEMORY.md loader (matches only this project's Hermes sessions) |
+| `read_hermes_memory` | Hermes long-term memory (`memories/MEMORY.md`) and user profile (`memories/USER.md`), read-only with a per-file byte cap. Added in 0.7.0 for cross-machine setups where the cwd never overlaps. |
 | `consult_hermes` | ask Hermes a question (file-based async; reply must carry secret suffix since v0.2.2) |
 | `mirror_session_to_hermes` | opt-in V4 mirror with secret-pattern redaction (v0.2.2; cookies / JWTs / API keys / set-cookie / session_id redacted) |
 | `session_mirror` | automatic mirror switch: `enable` / `disable` / `status` for the current DSH session (always redacted). Since v0.6.0 the default policy `HERMES_LINK_MIRROR_POLICY=scoped` auto-enables it for sessions whose cwd matches a real Hermes project; `disable` is a durable opt-out |
@@ -117,7 +118,19 @@ See [docs/security-model.md](docs/security-model.md) for the full layered model.
 
 ## Quickstart
 
-### Install from dsh-market (recommended)
+### Deployment topologies
+
+- **Same host (default)** — plugins + `HERMES_HOME` is all you need.
+- **Hermes on another machine** — run `bridge/hermes-bridge.py` to mirror the
+  remote Hermes Home over SSH and point the plugin at it with
+  `config.hermesHome`.
+- **Hermes dispatches into DSH** — add the reverse tunnel and register DSH as an
+  MCP server on the Hermes host.
+
+Step-by-step instructions for all three (plus systemd units, verification and a
+troubleshooting table) live in [docs/CROSS-MACHINE.md](packages/dsh-hermes-link/docs/CROSS-MACHINE.md).
+
+## Install from dsh-market (recommended)
 
 ```sh
 # 1. Make sure dsh-market is installed in your profile

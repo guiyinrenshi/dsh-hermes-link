@@ -1,0 +1,65 @@
+{
+  "host": "hermes.example.lan",
+  "port": 22,
+  "user": "hermes",
+  "key_path": "~/.hermes-bridge/bridge_key",
+  "remote_home": "/home/hermes/.hermes",
+  "local_home": "~/.hermes-mirror",
+  "poll_seconds": 3,
+  "pull_batch_files": 120,
+  "pull_batch_bytes": 67108864,
+  "state_db_interval_seconds": 120,
+  "pull_roots": [
+    "sessions",
+    "memories",
+    "outbox/hermes",
+    "inbox/dsh/consult-reply",
+    "inbox/dsh/dispatch-result"
+  ],
+  "pull_files": [
+    "SOUL.md",
+    "AGENTS.md",
+    "config.yaml"
+  ],
+  "push_roots": [
+    "inbox/dsh/consult",
+    "inbox/dsh/amend",
+    "inbox/dsh/session-mirror"
+  ],
+  "skip_suffixes": [
+    ".lock",
+    "-shm",
+    "-wal",
+    ".tmp",
+    ".part"
+  ],
+  "tunnel": {
+    "enabled": true,
+    "bind": "127.0.0.1",
+    "remote_port": 13080,
+    "local_port": 3091,
+    "candidate_ports": [
+      3091,
+      59928
+    ],
+    "probe_seconds": 10
+  },
+  "dsh_export": {
+    "enabled": false,
+    "remote_dir": "/home/hermes/dsh-share",
+    "zstd_path": "",
+    "local_sessions": "~/.dsh/sessions",
+    "local_workspace": "~/workspace",
+    "interval_seconds": 60,
+    "manifest_max_files": 4000,
+    "skip_dirs": [
+      ".git",
+      "node_modules",
+      ".venv",
+      "__pycache__",
+      ".tools",
+      ".uitest",
+      "hermes-bridge"
+    ]
+  }
+}

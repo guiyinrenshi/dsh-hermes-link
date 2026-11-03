@@ -69,7 +69,8 @@ export async function handleDispatchTask(ctx, args, deps) {
   const err = validateSpec(args)
   if (err) return { _error: mcpError(null, 'E_INVALID_SPEC', err) }
 
-  const parent = pickParentAgent(ctx)
+  const parentCandidates = pickParentAgents(ctx)
+  let parent = parentCandidates[0] || null
   if (!parent) {
     return { _error: mcpError(null, 'E_NO_LIVE_AGENT', 'no live agent available; dsh session must be running to dispatch a task') }
   }
@@ -129,21 +130,23 @@ export async function handleDispatchTask(ctx, args, deps) {
 
   if (mode === 'continuable') {
     try {
-      const spawnResult = await subagents.startContinuable({
+      const started = await spawnWithParentCandidates(parentCandidates, (candidate) => subagents.startContinuable({
         provider,
         label: 'dsh-hermes-link:' + taskId,
         signal: controller.signal,
         request: {
           label: 'dsh-hermes-link:' + taskId,
           prompt: [{ type: 'text', text: args.task }],
-          parent,
+          parent: candidate,
           signal: controller.signal,
           toolFilter: { allow: [args.skill] },
           persona,
           agentOptions: childAgentOptions,
           maxDepth: 1,
         },
-      })
+      }))
+      parent = started.parent
+      const spawnResult = started.value
       const childId = String(spawnResult.childId)
       const workspace = (parent.session && parent.session.header && parent.session.header.cwd) || ''
       let amendNonce = ''
@@ -228,16 +231,18 @@ export async function handleDispatchTask(ctx, args, deps) {
   // one-shot path
   let runResult, error, run
   try {
-    run = await subagents.start(PROVIDER_NAME, {
+    const started = await spawnWithParentCandidates(parentCandidates, (candidate) => subagents.start(PROVIDER_NAME, {
       label: 'dsh-hermes-link:' + taskId,
       prompt: [{ type: 'text', text: args.task }],
-      parent,
+      parent: candidate,
       signal: controller.signal,
       toolFilter: { allow: [args.skill] },
       persona,
       agentOptions: childAgentOptions,
       maxDepth: 1,
-    })
+    }))
+    parent = started.parent
+    run = started.value
     runResult = await run.result
   } catch (e) {
     error = e
@@ -505,12 +510,46 @@ export function extractOutputText(content) {
   return parts.join('\n').trim()
 }
 
+/**
+ * Every live agent a dispatch could use as the parent, most-session-like first.
+ *
+ * dsh 0.2.x can expose ghost agents whose cordis fiber is no longer admitting
+ * work; spawning from one fails with
+ *   'cannot get required service "tools" in inactive context'
+ * (seen on the Windows cross-machine deployment). The caller therefore tries
+ * candidates in order instead of trusting roots()[0].
+ */
+export function pickParentAgents(ctx) {
+  const out = []
+  const push = (agent) => { if (agent && !out.includes(agent)) out.push(agent) }
+  try { for (const a of (ctx.agents && typeof ctx.agents.roots === 'function' && ctx.agents.roots()) || []) push(a) } catch {}
+  try { for (const a of (ctx.agents && typeof ctx.agents.list === 'function' && ctx.agents.list()) || []) push(a) } catch {}
+  return out
+}
+
 export function pickParentAgent(ctx) {
-  const roots = ctx.agents && ctx.agents.roots && ctx.agents.roots()
-  if (roots && roots.length > 0) return roots[0]
-  const all = ctx.agents && ctx.agents.list && ctx.agents.list()
-  if (all && all.length > 0) return all[0]
-  return null
+  return pickParentAgents(ctx)[0] || null
+}
+
+/**
+ * Run one spawn attempt per parent candidate until one is accepted. Failures
+ * that do not look like a dead/inactive parent context are rethrown at once so
+ * real dispatch errors keep their original message.
+ * @returns {Promise<{parent: object, value: any}>}
+ */
+export async function spawnWithParentCandidates(candidates, attempt) {
+  const list = Array.isArray(candidates) ? candidates : []
+  const errors = []
+  for (const candidate of list) {
+    try {
+      return { parent: candidate, value: await attempt(candidate) }
+    } catch (e) {
+      const message = String((e && e.message) || e)
+      errors.push(message)
+      if (!/inactive context|not live|required service "tools"|UNAUTHORIZED|NO_LIVE_AGENT/i.test(message)) throw e
+    }
+  }
+  throw new Error('no usable parent agent: ' + (errors.join(' | ') || 'none available'))
 }
 
 function truncate(s, max) {

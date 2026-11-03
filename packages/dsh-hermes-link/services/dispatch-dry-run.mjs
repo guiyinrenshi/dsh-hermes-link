@@ -11,6 +11,7 @@
 // LLM turn.
 
 import { countTokens, countTokensParts, tokenizersAvailable, tokenizerImpl } from './tokenizer.mjs'
+import { listToolNames } from './tool-catalog.mjs'
 
 const ENVELOPE_OVERHEAD_CHARS = 500  // legacy metric; kept so v0.3.3 callers comparing prompt_chars still see the same number
 const ENVELOPE_OVERHEAD_TOKENS = 120  // real-token envelope overhead (system block + closing tags)
@@ -154,15 +155,10 @@ export function buildDispatchDryRun(args, deps) {
 
   // ---- skill availability (best-effort) ----
   const ctx = deps.ctx
-  if (ctx && ctx.tools && typeof ctx.tools.view === 'function') {
-    let view = null
-    try { view = ctx.tools.view() } catch (_e) {}
-    if (view && Array.isArray(view.restrictableNames)) {
-      if (!view.restrictableNames.includes(args.skill)) {
-        result.would_block_on.push('skill:unknown_tool')
-        result.warnings.push('skill "' + args.skill + '" not in dsh tools catalog (dispatch_task would fail)')
-      }
-    }
+  const names = listToolNames(ctx)
+  if (names && names.length > 0 && !names.includes(args.skill)) {
+    result.would_block_on.push('skill:unknown_tool')
+    result.warnings.push('skill "' + args.skill + '" not in dsh tools catalog (dispatch_task would fail)')
   }
 
   // ---- warnings ----

@@ -14,6 +14,7 @@ import { buildDispatchDryRun } from '../services/dispatch-dry-run.mjs'
 import { mcpError, mcpResult, incMetric } from './_util.mjs'
 import { getRateLimiter, tokenKey } from '../services/rate-limit.mjs'
 import { handleDispatchTask } from './dispatch-task.mjs'
+import { listToolNames } from '../services/tool-catalog.mjs'
 import {
   handleDispatchFollowup,
   handleDispatchInterrupt,
@@ -389,17 +390,11 @@ function buildToolsList() {
 function handleProbe(ctx, id, args) {
   const probeName = args && typeof args.skill === 'string' && args.skill ? args.skill : ''
   if (!probeName) return mcpError(id, 'E_INVALID_SPEC', 'missing required field: skill')
-  let names = null
-  try {
-    let view = null
-    try { view = ctx.tools.view() } catch {}
-    if ((!view || !view.restrictableNames) && ctx.tools.view) {
-      try { view = ctx.tools.view({}) } catch {}
-    }
-    if (view && view.restrictableNames) names = [...view.restrictableNames].sort()
-  } catch {}
+  // v0.7.0: view().restrictableNames first, schemas() fallback - some 0.2.x
+  // builds only expose the latter (E_TOOL_CATALOG_UNAVAILABLE before).
+  const names = listToolNames(ctx)
   if (!names) {
-    return mcpError(id, 'E_TOOL_CATALOG_UNAVAILABLE', 'tools.view().restrictableNames not readable in this dsh build')
+    return mcpError(id, 'E_TOOL_CATALOG_UNAVAILABLE', 'no readable tool catalog in this dsh build (tools.view().restrictableNames and tools.schemas() both failed)')
   }
   if (names.includes(probeName)) {
     return mcpResult(id, { content: [{ type: 'text', text: 'ok: tool "' + probeName + '" is known (' + names.length + ' global tools)' }] })

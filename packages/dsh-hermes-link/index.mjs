@@ -70,6 +70,7 @@ import { createSessionMirrorControlTool } from './tools/session-mirror-control.m
 import { createDoctorTool } from './tools/doctor.mjs'
 import { createStatusTool } from './tools/status.mjs'
 import { createLoadHermesProjectMemoryTool } from './tools/load-hermes-project-memory.mjs'
+import { createReadHermesMemoryTool } from './tools/read-hermes-memory.mjs'
 import { createRotateOutboxNowTool } from './tools/rotate-outbox-now.mjs'
 import { createDispatchStatusTool } from './tools/dispatch-status.mjs'
 
@@ -171,6 +172,25 @@ function registerMetricsShape(metrics, { VERSION }) {
 // Hermes Home auto-detect
 // -----------------------------------------------------------------------------
 
+/**
+ * Resolve the Hermes Home this plugin reads.
+ *
+ * Precedence: explicit plugin config (cordis patch entry `config.hermesHome`)
+ * > HERMES_HOME env > platform default. The config field is what makes a
+ * cross-machine deployment possible: point it at a mirror directory kept in
+ * sync from the Hermes host (see docs/CROSS-MACHINE.md).
+ * @param {object} [config] plugin config from the cordis patch entry
+ * @returns {string} absolute Hermes Home path
+ */
+export function resolveHermesHome(config) {
+  const configured = config && typeof config.hermesHome === 'string' ? config.hermesHome.trim() : ''
+  if (configured) {
+    if (existsSync(configured)) return configured
+    console.warn('[dsh-hermes-link] config.hermesHome does not exist: ' + configured + ' - falling back to detection')
+  }
+  return detectHermesHome()
+}
+
 export function detectHermesHome() {
   if (process.env.HERMES_HOME && existsSync(process.env.HERMES_HOME)) {
     return process.env.HERMES_HOME
@@ -213,8 +233,8 @@ export function buildFoundationSlice(hermesHome) {
 export const name = 'dsh-hermes-link'
 export const inject = ['skills', 'webServer', 'sessions', 'agents', 'subagents', 'tokenMeter', 'workspaceRegistry', 'sessionTitle', 'sessionPersistence', 'tools']
 
-export function apply(ctx) {
-  const hermesHome = detectHermesHome()
+export function apply(ctx, config) {
+  const hermesHome = resolveHermesHome(config)
   console.log('[dsh-hermes-link v' + VERSION + '] applying; hermes_home=' + hermesHome)
 
   // 1. skill provider 闂?makes `@skill dsh-hermes-link` work
@@ -418,6 +438,9 @@ export function apply(ctx) {
       ctx.tools.register(createMirrorSessionToHermesTool({ outbox }))
       ctx.tools.register(createSessionMirrorControlTool({ sessionMirror }))
       ctx.tools.register(createLoadHermesProjectMemoryTool({ hermesHome }))
+      // v0.7.0: MEMORY.md / USER.md live outside the persona slice on purpose
+      // upstream; a cross-machine setup has no other way to reach them.
+      ctx.tools.register(createReadHermesMemoryTool({ hermesHome }))
       ctx.tools.register(createRotateOutboxNowTool({ outboxRotation }))
       ctx.tools.register(createDispatchStatusTool({ continuations, ctx }))
       // v0.6.2 - the doctor, callable from the session (same module as the CLI
@@ -426,7 +449,7 @@ export function apply(ctx) {
       // v0.6.9 - the one-glance status: the doctor's checks condensed into what a
       // person (or the agent) actually asks: is it working, and what do I do next?
       ctx.tools.register(createStatusTool({ hermesHome, sessionMirror, hermesOutbox, consultClient, metrics, importer }))
-      console.log('[dsh-hermes-link v' + VERSION + '] tools registered: list_hermes_sessions, import_hermes_session, load_hermes_persona, consult_hermes, mirror_session_to_hermes, session_mirror, load_hermes_project_memory, rotate_outbox_now, dispatch_status, hermes_link_doctor')
+      console.log('[dsh-hermes-link v' + VERSION + '] tools registered: list_hermes_sessions, import_hermes_session, load_hermes_persona, consult_hermes, mirror_session_to_hermes, session_mirror, load_hermes_project_memory, read_hermes_memory, rotate_outbox_now, dispatch_status, hermes_link_doctor')
     }
   } catch (e) {
     console.error('[dsh-hermes-link v' + VERSION + '] tool registration failed:', e && e.message || e)
