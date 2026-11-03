@@ -57,15 +57,15 @@
     "arm64"
   ],
   "author": {
-    "name": "Tianbuyu-wwx (original), dsh-hermes-link compat fork"
+    "name": "dsh-hermes-link compat fork (guiyinrenshi); original by Tianbuyu-wwx"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Tianbuyu-wwx/dsh-hermes-link.git"
+    "url": "git+https://github.com/guiyinrenshi/dsh-hermes-link.git"
   },
-  "homepage": "https://github.com/Tianbuyu-wwx/dsh-hermes-link#readme",
+  "homepage": "https://github.com/guiyinrenshi/dsh-hermes-link#readme",
   "bugs": {
-    "url": "https://github.com/Tianbuyu-wwx/dsh-hermes-link/issues"
+    "url": "https://github.com/guiyinrenshi/dsh-hermes-link/issues"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
