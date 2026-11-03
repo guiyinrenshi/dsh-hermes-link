@@ -1,6 +1,6 @@
 # dsh-hermes-link
 
-[![npm version](https://img.shields.io/npm/v/@Tianbuyu-wwx/dsh-hermes-link)](https://www.npmjs.com/package/@Tianbuyu-wwx/dsh-hermes-link)
+[![npm version](https://img.shields.io/npm/v/dsh-hermes-link)](https://www.npmjs.com/package/dsh-hermes-link)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node >=20](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](package.json)
 [![dsh-plugin](https://img.shields.io/badge/dsh--plugin-blue)](https://github.com/dsh-market/awesome-dsh-plugin)
@@ -142,7 +142,7 @@ dsh plugin --profile web add dshmarket
 ### Install from npm directly
 
 ```sh
-dsh plugin --profile web add @Tianbuyu-wwx/dsh-hermes-link
+dsh plugin --profile web add dsh-hermes-link
 ```
 
 ### Install from a local checkout (dev loop)

@@ -18,7 +18,7 @@ Pick the path that matches your workflow. All three end up with `dsh-hermes-link
 1. Open DSH web (e.g. `dsh --profile web`, defaults to `127.0.0.1:3080`).
 2. Settings → **Plugin Market**.
 3. Search `dsh-hermes-link`.
-4. Click the card → confirm install source (npm: `@Tianbuyu-wwx/dsh-hermes-link`).
+4. Click the card → confirm install source (npm: `dsh-hermes-link`).
 5. Watch live progress; the plugin goes live after a page refresh.
 
 ### Verify
@@ -58,7 +58,7 @@ All three are handled by `dsh-market`'s Plugin tab:
 If you don't use `dsh-market`, install via the official `dsh plugin` command, which delegates to pnpm:
 
 ```sh
-dsh plugin --profile web add @Tianbuyu-wwx/dsh-hermes-link
+dsh plugin --profile web add dsh-hermes-link
 ```
 
 Then restart `dsh web`. Verify as in Path 1.
@@ -66,8 +66,8 @@ Then restart `dsh web`. Verify as in Path 1.
 ### Update / uninstall
 
 ```sh
-dsh plugin --profile web update dsh-hermes-link    # or: update @Tianbuyu-wwx/dsh-hermes-link
-dsh plugin --profile web remove @Tianbuyu-wwx/dsh-hermes-link
+dsh plugin --profile web update dsh-hermes-link
+dsh plugin --profile web remove dsh-hermes-link
 ```
 
 ### Disable (without uninstalling)
@@ -217,12 +217,12 @@ git checkout -- packages/dsh-hermes-link/cordis.patch.yml
 ## Uninstall
 
 ```sh
-dsh plugin --profile web remove @Tianbuyu-wwx/dsh-hermes-link
+dsh plugin --profile web remove dsh-hermes-link
 ```
 
 Or via `dsh-market`. Both clean up:
 
-- `~/.dsh/profiles/web/node_modules/@Tianbuyu-wwx/dsh-hermes-link` (junction)
+- `~/.dsh/profiles/web/node_modules/dsh-hermes-link` (junction)
 - `cordis.patch.yml` row
 - `audit.jsonl` / `continuables.sqlite` left in place (operator archives separately)
 

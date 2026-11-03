@@ -6,7 +6,7 @@
 > （npm 包名 **`dsh-hermes-link`**）修复了 0.2.x 兼容、合并了跨机器能力并补齐部署文档。
 > 变更清单见 [FORK-NOTES.md](FORK-NOTES.md)。
 
-[![npm 版本](https://img.shields.io/npm/v/@Tianbuyu-wwx/dsh-hermes-link)](https://www.npmjs.com/package/@Tianbuyu-wwx/dsh-hermes-link)
+[![npm 版本](https://img.shields.io/npm/v/dsh-hermes-link)](https://www.npmjs.com/package/dsh-hermes-link)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node >=20](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](package.json)
 [![dsh-plugin](https://img.shields.io/badge/dsh--plugin-blue)](https://github.com/dsh-market/awesome-dsh-plugin)
@@ -113,7 +113,7 @@ dsh plugin --profile web add dshmarket
 ### 直接从 npm 安装
 
 ```sh
-dsh plugin --profile web add @Tianbuyu-wwx/dsh-hermes-link
+dsh plugin --profile web add dsh-hermes-link
 ```
 
 ### 从本地 checkout 安装（开发循环）

@@ -1,8 +1,8 @@
 name: release
 
 on:
-  push:
-    branches: [main]
+  # Manual only in this fork: npm publishing needs a token that lives with the
+  # maintainer, so a push must not start a failing publish job.
   workflow_dispatch:
 
 # Only one release at a time.
@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   publish:
-    name: publish @tianbuyu-wwx/dsh-hermes-link
+    name: publish dsh-hermes-link
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
