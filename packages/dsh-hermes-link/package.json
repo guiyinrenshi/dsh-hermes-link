@@ -27,7 +27,10 @@
     "http",
     "dispatch-spec.schema.json",
     "bridge",
-    "docs"
+    "docs",
+    "CHANGELOG.md",
+    "README.md",
+    "LICENSE"
   ],
   "license": "MIT",
   "keywords": [

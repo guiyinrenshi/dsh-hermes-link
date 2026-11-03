@@ -1,0 +1,320 @@
+# dsh-hermes-link
+
+[![npm version](https://img.shields.io/npm/v/@Tianbuyu-wwx/dsh-hermes-link)](https://www.npmjs.com/package/@Tianbuyu-wwx/dsh-hermes-link)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Node >=20](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](package.json)
+[![dsh-plugin](https://img.shields.io/badge/dsh--plugin-blue)](https://github.com/dsh-market/awesome-dsh-plugin)
+
+> Bidirectional bridge between **Hermes Agent** and **DeepSeek Harness (DSH)**. Hermes dispatches focused tasks (one-shot or continuable) via JSON-RPC over `POST /mcp/collab`; DSH spawns sub-agents, returns real measured tokens, and lets you **continue any Hermes session as a native DSH session in the sidebar**.
+
+---
+
+## Table of contents
+
+- [Why dsh-hermes-link exists](#why-dsh-hermes-link-exists)
+- [Features](#features)
+- [Quickstart](#quickstart)
+- [Architecture](#architecture)
+- [Configuration](#configuration)
+- [Security model](#security-model)
+- [Roadmap](#roadmap)
+- [FAQ](#faq)
+- [License](#license)
+- [Related docs](#related-docs)
+
+---
+
+## Why dsh-hermes-link exists
+
+Hermes is an *agent*-*orch-estrator* — it plans the work, picks the skill, loads the knowledge slice. DSH is a *coding-runtime* — it runs sub-agents, edits files, runs shells, talks to LLMs. Each tool does its job well in isolation; the question was always how to make them *one system* without dragging each one's concerns into the other.
+
+Earlier we ran this as three separate plugins (`hermes-foundation`, `hermes-oneshot-arbitrate`, `hermes-dispatch-bridge`). That triad is now archived under `dsh-hermes` with an `archive/hermes-legacy-2026-08-22` tag — `dsh-hermes-link` is the single plugin that replaced them, and this repository is the home of that replacement.
+
+---
+
+## Features
+
+### Agent-communication line (Hermes → DSH)
+
+- **`POST /mcp/collab`** — JSON-RPC 2.0 endpoint Hermes posts to.
+  - `dispatch_task` with `mode: one-shot | continuable`. Continuable children are durable across DSH restarts (SQLite-backed).
+  - `dispatch_followup` / `dispatch_interrupt` / `dispatch_list` / `dispatch_get` / `get_dispatch`.
+  - `dispatch_probe` — zero-cost tool-name validation against `ctx.tools.view().restrictableNames` so Hermes doesn't burn an LLM turn on a typo.
+  - `dispatch_subscribe` (v0.3.0) — discovery helper that returns the SSE URL.
+  - **`get_dispatch`** — read `audit.jsonl` for the most recent entries.
+- **`GET /mcp/collab/stream` (v0.3.0 F1)** — `text/event-stream` of real-time events for a continuable task (lifecycle / step / token / amend / followup / interrupt). Bearer-auth, `?task_id=...&since_seq=N&timeout_ms=N`.
+- **`GET /mcp/collab/session-stream` (v0.5.0)** — SSE feed of newly mirrored DSH session events for an enabled session (`?session_id=<sid>`, `since_seq` / `timeout_ms` supported).
+- **`GET /mcp/collab/session-mirror/status` (v0.5.0)** — mirror status for one session (`?session_id=<sid>`) or all enabled sessions.
+- **Bearer auth** via `HERMES_LINK_TOKEN` env (open by default).
+- **H4 amend nonce** (v0.2.2+): amend files must be named `<ts>-<task_id>-<nonce>.json`; nonce returned in `dispatch_task` metadata.
+- **Consult reply_secret** (v0.2.2+): reply files must be named `<ticket>-<secret>.json`; secret returned in the consult payload.
+- **Persona envelope**: SOUL injected (v0.2.2+); `include_project_memory: true` opts in cwd-scoped MEMORY; encoding rules prevent CJK mojibake; sentinel strings are never paraphrased.
+- **Real measured tokens**: `ctx.tokenMeter.measure(run.localAgent)` populates `tokens_used` on the dispatched result — no more `null` in dispatch-result.
+
+### User-view line (DSH → Hermes)
+
+| Tool | Purpose |
+|---|---|
+| `list_hermes_sessions` | enumerate Hermes archives enriched with title/model/cwd from Hermes `state.db` |
+| `import_hermes_session` | convert a Hermes archive to a live DSH session — **click-to-resume** |
+| `load_hermes_persona` | inject Hermes SOUL.md + config into the current session (v0.2.3: no longer reads MEMORY.md) |
+| `load_hermes_project_memory` | cwd-scoped Hermes MEMORY.md loader (matches only this project's Hermes sessions) |
+| `read_hermes_memory` | Hermes long-term memory (`memories/MEMORY.md`) and user profile (`memories/USER.md`), read-only with a per-file byte cap. Added in 0.7.0 for cross-machine setups where the cwd never overlaps. |
+| `consult_hermes` | ask Hermes a question (file-based async; reply must carry secret suffix since v0.2.2) |
+| `mirror_session_to_hermes` | opt-in V4 mirror with secret-pattern redaction (v0.2.2; cookies / JWTs / API keys / set-cookie / session_id redacted) |
+| `session_mirror` | automatic mirror switch: `enable` / `disable` / `status` for the current DSH session (always redacted). Since v0.6.0 the default policy `HERMES_LINK_MIRROR_POLICY=scoped` auto-enables it for sessions whose cwd matches a real Hermes project; `disable` is a durable opt-out |
+| `hermes_inbox` / `hermes_inbox_append` | read / append to the shared conversation record (`~/.dsh/hermes-inbox/session.jsonl`) |
+| `hermes_clear_injected` | audit-only: count turns auto-injected by an older hermes-foundation/dsh-hermes-link version, point at "open a new session" |
+| `rotate_outbox_now` | v0.3.1 F2: force an immediate outbox file rotation pass (size-based usage.jsonl / session-mirror rotation + age-based heartbeat / memory-suggest archive + purge) |
+| `dispatch_status` | v0.3.1 F4: snapshot of live continuable dispatch children (task_id, child_id, status, tokens, recent audit) — useful for inspecting what Hermes-dispatched tasks are running |
+| `hermes_link_status` | v0.6.9: one-glance status -- one line per channel (notifications, import, mirror, consult), the counters since plugin load including consult token usage, and the next action when something is off |
+| `hermes_link_doctor` | v0.6.2: run the runtime self-check from inside the session — heartbeat freshness, whether enabled mirrors are still advancing, consult backlog with ages, amend writability, outbox state (same module as `npx hermes-link-doctor` and `GET /mcp/collab/doctor`) |
+
+### Auto-loop
+
+- **Startup auto-sync** imports every Hermes session into DSH.
+- **fs-watcher** polls `Hermes Home/sessions/` and re-syncs on new dumps.
+- **Import format compatibility**: the converter accepts both Anthropic-style content blocks and OpenAI-compatible request dumps (`assistant.content` string + `assistant.tool_calls[]` + `role: 'tool'` results), so Hermes AI replies and tool calls are preserved in imported DSH sessions.
+- **heartbeat** (60s), **usage** (per-task), **memory-suggest** all run in the background.
+- **amend watcher** (H4 nonce-bound) delivers mid-task amendments from Hermes to running continuable children.
+- **Hermes→DSH notification consumer** (v0.6.0 C1): `Hermes Home/outbox/hermes/**/*.json` is now read (fs.watch + safety poll, the amend-watcher shape). `kind:"import"` runs the importer, `notify`/`ping` publish on the `hermes-outbox` SSE channel, and every file leaves the scan set — executed files move to `done/`, redeliveries are archived as `duplicate-*` (the notification `id` is remembered across restarts), and malformed/unsupported/failed files are parked with a prefix instead of being rescanned forever. Status: `GET /mcp/collab/hermes-outbox/status`.
+- **session mirror** is policy-scoped by default (v0.6.0): `HERMES_LINK_MIRROR_POLICY` = `off` | `scoped` (default) | `all`. Under `scoped` a session is mirrored automatically only when its `header.cwd` matches a real Hermes project (`state.db` `sessions.cwd` / `git_repo_root`, or the same git worktree root); an unrelated project stays OFF (`HERMES_LINK_MIRROR_PROJECTS` lists local paths that stay in scope when Hermes' recorded project key is stale). Every mirrored event is redacted and written to `Hermes Home/inbox/dsh/session-mirror/<sid>.jsonl` as `{ts, cursor, source, origin_session_id, event}` — keep the last line's `cursor` and resume the SSE feed with `since_seq=<cursor>` instead of rescanning; Hermes can also subscribe to `GET /mcp/collab/session-stream?session_id=<sid>` for real-time SSE. The echo/noise guard always skips `hermes-*` / `hermes-imported` sessions (no transcript echo back to Hermes) and pure lifecycle/bookkeeping events, and an explicit `session_mirror action=disable` is durable.
+- **One command to wire it up** (v0.6.10): `npx dsh-hermes-link-setup` checks the Hermes home, installs (or refreshes) the Hermes-side bridge plugin, enables it in Hermes through the Hermes CLI when one is reachable, and ends with the short list of things only you can do — the restarts. `--dry-run` prints the same plan without touching anything; `--json` for scripts. Install → enable → restart used to be six manual steps across this README, and two of them being skipped silently is exactly what the 2026-09-15 audit found.
+- **Hermes-side bridge plugin** (v0.6.3, extended in v0.6.4): `npx hermes-link-install-hermes-plugin` copies `hermes-plugin/dsh-link` into `<Hermes Home>/plugins/dsh-link/`, where Hermes discovers it like any out-of-tree plugin (`hermes plugins enable dsh-link`). It carries **both** Hermes-facing channels:
+  - **outbox** — one `import` notification per Hermes **turn end** (DSH imports/refreshes that session immediately instead of waiting for its own dump watcher), a `notify` for failed/interrupted turns, a `producer_ready` ping at load, and `/dsh-notify <message>` for a human-written message;
+  - **consult** — a background poller answers DSH's `consult_hermes` tickets with `ctx.llm.complete(...)` (the host-owned facade: your active model, no keys in the plugin) and writes `consult-reply/<ticket>-<secret>.json` plus a durable `<ticket>.answered.json` marker. `/dsh-consult` drains the queue on demand; knobs live under `plugins.entries.dsh-link.consult` (`enabled`, `interval_seconds`, `ttl_hours`, `max_tokens`, `max_per_cycle`, `system_prompt`).
+  **Restart Hermes after installing** (plugins load at start-up); `GET /mcp/collab/doctor` reports whether the bridge is present, and the consult pre-flight in `consult_hermes` uses the real answer history instead of guessing.
+- **Hermes Home auto-detect**: `HERMES_HOME` env → `%LOCALAPPDATA%\hermes` on Windows → `~/.local/share/hermes` on POSIX.
+
+### Diagnostics — `npx hermes-link-doctor` (v0.6.0 D; shipped inside the package since v0.6.1)
+
+Every silently broken channel this project has hit was invisible to source reading: three consult tickets three weeks stale, a `session-mirror/` directory holding only `archive/`, 145 imported sessions whose model selection no adapter could serve. The doctor measures instead of assumes:
+
+- **filesystem probe** (`npx hermes-link-doctor` — or `npm run doctor` / `node scripts/hermes-link-doctor.mjs` in a repository checkout): heartbeat freshness (is the plugin actually alive?), resolved mirror policy + **whether enabled mirrors are still growing**, consult backlog with per-ticket age, amend-directory writability, the Hermes→DSH outbox state, and — behind `--pin-scan` — whether every imported session still ends in a routable `model/selection`.
+- **in-process probe**: `GET /mcp/collab/doctor` runs the same module inside DSH, adding the live policy/consumer state the filesystem cannot show.
+- **repair**: `npx hermes-link-repair-model-pins --apply` (dry-run by default) re-pins imported sessions that still resolve to the synthetic `dsh-hermes-link` provider — the state that blocks a conversation's model and mode selectors.
+- **signals** (v0.6.5): the report also carries what each channel has *actually done* — dispatches, imports, consults, mirror sessions enabled, outbox notifications, events skipped, expiry markers, queue depth, SSE channels, uptime — parsed from the same registry that backs `GET /mcp/collab/metrics` (one parser, so the two can never report different numbers). "No failures" and "no traffic" look identical otherwise, which is exactly how three dead channels survived a code-reading audit; the CLI reads the live numbers over HTTP when you pass `--url` (add `--token` for an auth-gated deployment).
+- Exit code 1 when a channel is broken (`--strict` also fails on warnings); `--json` for scripting.
+- The consult channel also gets a **TTL sweep** (hourly): a ticket with no reply past 24h is marked with a non-destructive `<ticket>.expired.json` beside it — countable via `hermes_link_consult_expired_total` — and the ticket itself is kept, so a late reply is still accepted.
+
+### Security boundaries
+
+| Risk | Mitigation | Since |
+|---|---|---|
+| Cross-project context pollution (Hermes injects project-A dialogue into DSH's project-B session) | main-session auto-injection disabled; MEMORY.md not broadcast; project-memory only matches cwd | v0.2.1 + v0.2.2 + v0.2.3 |
+| Adversary writes `amend/*` to hijack a running sub-agent | nonce-bound filename (`<ts>-<task_id>-<nonce>.json`) | v0.2.2 |
+| Adversary writes `consult-reply/*` to impersonate Hermes | secret-bound filename (`<ticket>-<secret>.json`) | v0.2.2 |
+| Dispatched sub-agent inherits global MEMORY notes from unrelated projects | foundation = SOUL-only; `include_project_memory: true` is explicit opt-in per dispatch | v0.2.2 |
+| Hermes state.db poisoned cwd → `C:\Windows\System32` | `isSafeCwd()` rejects 17 system roots + null byte + >1024 chars | v0.2.3 |
+| Mirror filename >200 chars triggers `ENAMETOOLONG` silent failure | sha1(12 hex) tail truncation with preserved uniqueness | v0.2.3 |
+| Mirror leaks cookie / set-cookie / session_id | redact regex list expanded to 10+ secret shapes | v0.2.3 |
+| DSH session of project A mirrored into project B's Hermes inbox | mirror policy defaults to `scoped`: auto-enable requires a provable cwd / git-repo-root match against Hermes `state.db`; an invalid policy value falls back to `scoped`, never `all` | v0.6.0 |
+| Hermes-imported session mirrored back into Hermes (transcript echo) | echo/noise guard: `hermes-*` ids and the `hermes-imported` agentPreset are never auto-enabled and never written, even when explicitly enabled; lifecycle/bookkeeping event types are skipped | v0.6.0 |
+| Imported sessions resume-unusable (`turn:0` events fail DSH persistence validator) | turn envelope rewritten to start at 1; corrupt artifacts auto-removed and rebuilt | v0.2.4 |
+
+See [docs/security-model.md](docs/security-model.md) for the full layered model.
+
+---
+
+## Quickstart
+
+### Deployment topologies
+
+- **Same host (default)** — plugins + `HERMES_HOME` is all you need.
+- **Hermes on another machine** — run `bridge/hermes-bridge.py` to mirror the
+  remote Hermes Home over SSH and point the plugin at it with
+  `config.hermesHome`.
+- **Hermes dispatches into DSH** — add the reverse tunnel and register DSH as an
+  MCP server on the Hermes host.
+
+Step-by-step instructions for all three (plus systemd units, verification and a
+troubleshooting table) live in [docs/CROSS-MACHINE.md](packages/dsh-hermes-link/docs/CROSS-MACHINE.md).
+
+## Install from dsh-market (recommended)
+
+```sh
+# 1. Make sure dsh-market is installed in your profile
+dsh plugin --profile web add dshmarket
+
+# 2. Restart dsh web, open Settings → Plugin Market, search "dsh-hermes-link", one-click install
+```
+
+### Install from npm directly
+
+```sh
+dsh plugin --profile web add @Tianbuyu-wwx/dsh-hermes-link
+```
+
+### Install from a local checkout (dev loop)
+
+```sh
+git clone https://github.com/Tianbuyu-wwx/dsh-hermes-link.git
+cd dsh-hermes-link
+dsh plugin --profile web add ./packages/dsh-hermes-link
+```
+
+Then restart `dsh web`. Open Hermes-config.yaml (`%LOCALAPPDATA%\hermes\config.yaml` on Windows) and add:
+
+```yaml
+mcp_servers:
+  dsh-bridge:
+    url: http://127.0.0.1:3080/mcp/collab
+```
+
+Optionally set `HERMES_LINK_TOKEN` in your DSH env to require a `Bearer` header (off by default).
+
+### Verify
+
+```sh
+node scripts/verify-install.mjs
+```
+
+Then in DSH:
+
+```
+/mcp/collab/health → { ok: true, version: "0.5.0", importer_ready: true, persona_ready: true, consult_ready: true, auth: "open|bearer-required", continuable_registry: "on", foundation_slice_chars: 1234, active_dispatchers: 0 }
+```
+
+---
+
+## Architecture
+
+```
+                Hermes (orchestrator)
+                      │
+        config.yaml mcp_servers.dsh-bridge
+                      ▼
+        POST /mcp/collab (JSON-RPC 2.0)
+        dispatch_task / followup / interrupt / list / get
+        dispatch_probe / get_dispatch
+                                          ┌──────────────────────────────────────┐
+                                          │ dsh-hermes-link (Cordis bundle)          │
+                                          │   ├─ HTTP routes /mcp/collab*        │
+                                          │   │   ├─ POST /mcp/collab (RPC)       │
+                                          │   │   ├─ GET  /mcp/collab/health      │
+                                          │   │   ├─ GET  /mcp/collab/sessions   │
+                                          │   │   ├─ POST /mcp/collab/import     │
+                                          │   │   ├─ POST /mcp/collab/import-all │
+                                          │   │   ├─ POST /mcp/collab/rename-all │
+                                          │   │   ├─ GET  /mcp/collab/persona    │
+                                          │   │   ├─ POST /mcp/collab/consult    │
+                                          │   │   └─ POST /mcp/collab/memory-suggest │
+                                          │   ├─ services/                       │
+                                          │   │   ├─ importer            request-dump → DSH SessionEvent[] │
+                                          │   │   ├─ watcher             fs-poll Hermes Home/sessions/ │
+                                          │   │   ├─ personaLoader       SOUL / MEMORY / config        │
+                                          │   │   ├─ consultClient       file-based Hermes consult      │
+                                          │   │   ├─ outbox              D3/D6/D7 + V4 mirror (policy)  │
+│   │   ├─ sessionMirror      V4 policy auto mirror (redacted + SSE)   │
+                                          │   │   ├─ continuations       continuable child registry     │
+                                          │   │   ├─ amendWatcher        H4 nonce-bound delivery        │
+                                          │   │   ├─ audit               D4 audit JSONL                 │
+                                          │   │   └─ hermes-project-memory cwd-scoped MEMORY (opt-in)    │
+                                          │   └─ tools/                          │
+                                          │       ├─ list_hermes_sessions                       │
+                                          │       ├─ import_hermes_session                      │
+                                          │       ├─ load_hermes_persona                        │
+                                          │       ├─ load_hermes_project_memory                 │
+                                          │       ├─ consult_hermes                             │
+                                          │       ├─ mirror_session_to_hermes                   │
+│       ├─ session_mirror (enable/disable/status)                  │
+                                          │       ├─ hermes_inbox / hermes_inbox_append          │
+                                          │       └─ hermes_clear_injected                      │
+                                          └──────────────────────────────────────┘
+                                          │
+        DSH→Hermes files                  v                  Hermes→DSH files
+        ──────────────                                       ──────────────
+        dispatch-result/<task_id>.json                  amend/<ts>-<task_id>-<nonce>.json
+        consult/<ts>-<uuid>.json (reply_secret)        consult-reply/<ticket>-<secret>.json
+        heartbeat/{ts}.json + latest.json              (Hermes writes; DSH verifies)
+        usage.jsonl
+        memory-suggest/<ts>.json
+        session-mirror/<sid>.jsonl  (opt-in via session_mirror or mirror_session_to_hermes)
+```
+
+See [docs/](docs/) for component-level details.
+
+---
+
+## Configuration
+
+| Env var | Default | Purpose |
+|---|---|---|
+| `HERMES_HOME` | auto-detected (`%LOCALAPPDATA%\hermes` on Windows, `~/.local/share/hermes` on POSIX) | Hermes data root |
+| `HERMES_LINK_TOKEN` | unset | When set, every `/mcp/collab*` (except `/health`) requires `Authorization: Bearer <token>` |
+| `HERMES_LINK_TRUST_LEGACY` | unset (`0`) | When set (`1`), legacy `<ticket>.json` consult-reply is accepted alongside the v0.2.2 `<ticket>-<secret>.json` |
+| `HERMES_LINK_MIRROR_PROJECTS` | unset | `;`/`,`-separated LOCAL paths that are in scope whatever Hermes' `state.db` says. Needed when a project directory was renamed or moved after Hermes last ran there (its recorded key goes stale and the `scoped` test then fails closed forever), or when the Hermes rows carry `cwd=null` |
+| `HERMES_LINK_MIRROR_POLICY` | `scoped` | DSH→Hermes session-mirror policy: `off` = only an explicit `session_mirror action=enable` (pre-v0.6.0 behaviour), `scoped` = auto-mirror only sessions whose cwd matches a real Hermes project (same `state.db` `cwd` / `git_repo_root` / git worktree root), `all` = every session. Redaction is always on and the echo/noise guard always applies. An invalid value warns and falls back to `scoped` (never `all`) |
+
+---
+
+## Security model
+
+[docs/security-model.md](docs/security-model.md) walks through each layer in detail. TL;DR — every cross-project channel is explicit opt-in; every cross-process channel is authenticated; no `null` tokens, no unbounded system paths, no unredacted cookie/secret leakage.
+
+Report vulnerabilities privately via **GitHub Security Advisories** on this repo. See [SECURITY.md](SECURITY.md).
+
+---
+
+## Roadmap
+
+| | Item | Status |
+|---|---|---|
+| ✅ | L1/L2/L3 three-pack → single `dsh-hermes-link` plugin | shipped 2026-08-20 |
+| ✅ | v0.1 → v0.2: full bidirectional + continuable + amend nonce + mirror opt-in + foundation SOUL-only | shipped 2026-08-21 |
+| ✅ | v0.2.1: disable main-session auto-injection; `hermes_clear_injected` audit | shipped 2026-08-21 |
+| ✅ | v0.2.2: S1–S4 (mirror opt-in / amend nonce / consult secret / project memory opt-in) | shipped 2026-08-21 |
+| ✅ | v0.2.3: K.1–K.5 (persona SOUL-only / cwd whitelist / mirror filename cap / redact cookie+session_id) | shipped 2026-08-22 |
+| ✅ | v0.2.4: turn envelope fix + corrupt-artifact auto-rebuild + tool output schema normalization + open-source | shipped 2026-08-22 |
+| ✅ | v0.3.0: SSE realtime stream (F1) + error codes registry (E9) + HTTP layer split into 4 files (E1) | shipped 2026-08-25 |
+| ✅ | v0.3.1: outbox file rotation (F2) + dispatch_status/tail observability (F4) + write-behind queue perf (E2) | shipped 2026-08-26 |
+| ✅ | v0.3.3: dispatch_dry_run JSON-RPC pre-flight estimator (F5) for Hermes-side cost control | shipped 2026-08-28 |
+| ✅ | v0.3.4: amend fs.watch + debounced batch (E3 perf) + globalThis cleanup (E5) | shipped 2026-08-29 |
+| ✅ | v0.3.2: Prometheus /mcp/collab/metrics endpoint (F6) with 16 counters + 8 gauges | shipped 2026-08-27 |
+| ✅ | v0.3.5: SSE first-event replay fix + HTTP surface end-to-end integration test | shipped 2026-08-26 |
+| ✅ | v0.3.6: dispatch_task continuable HTTP 500 fix (sseBroker destructure) | shipped 2026-08-26 |
+| ⏭ | Reverse tunnel (cross-machine / firewall traversal) | reserved |
+| ⏭ | SSE real-time stream | reserved |
+| ⏭ | File rotation for `session.jsonl` / mirror / usage | suggested (Hermes-side cron) |
+
+---
+
+## FAQ
+
+**Q: Does Hermes need to upgrade anything to talk to dsh-hermes-link v0.2.2+?**
+Yes. The amend nonce + consult reply_secret protocols are breaking changes. See [docs/hermes-upgrade-v0.2.2.md](docs/hermes-upgrade-v0.2.2.md) and the reference gateway in `scripts/hermes-gateway-demo.py`.
+
+**Q: I imported a Hermes session — it shows in the sidebar but I can't open it.**
+That's the v0.2.4 bug (turn:0 envelope failing DSH persistence validator) — fixed in v0.2.4 by bumping `turn/start..turn/end` to 1 and auto-rebuilding corrupt artifacts. Update to v0.2.4 (auto-recovery runs on next sync) or `dsh plugin update dsh-hermes-link`.
+
+**Q: My `import_hermes_session` returns "invalid output" before v0.2.4.**
+Same issue — fixed by declaring `firstUserSnippet` / `model` / `attach` in the tool output schema and normalizing nullable fields. Update to v0.2.4.
+**Q: I imported a Hermes session, but only my messages appear — Hermes AI replies and tool calls are missing.**
+That was an import-converter bug for OpenAI-compatible Hermes dumps (`assistant.content` as string + `assistant.tool_calls[]` + `role: 'tool'` results). It is fixed in the current working tree: re-import the session (delete the persisted `hermes-*` DSH session first, then run `import_hermes_session` / auto-sync) to get `assistant/message`, `tool/call`, and `tool/result` events back.
+
+**Q: What's the difference between `consult_hermes` and Hermes' own consult?**
+Both end up at Hermes. `consult_hermes` is a DSH tool that any user can call inside their session; `dispatch_task` is the agent-comm RPC that Hermes initiates. They share the file-based reply protocol but live on different routes (`POST /mcp/collab/consult` vs `POST /mcp/collab`).
+
+**Q: Why not just one plugin instead of three (`hermes-foundation / -oneshot-arbitrate / -dispatch-bridge`)?**
+That's exactly what v0.2.0 did — those three are archived under `dsh-hermes` with tag `archive/hermes-legacy-2026-08-22`. Single-plugin form is less bookkeeping and easier to reason about; dsh-hermes-link is that consolidation.
+
+---
+
+## License
+
+MIT © 2026 Tianbuyu-wwx — see [LICENSE](LICENSE).
+
+---
+
+## Related docs
+
+- [docs/security-model.md](docs/security-model.md) — full layered security model
+- [docs/plugin-developer-guide.md](docs/plugin-developer-guide.md) — for Hermes-side gateway developers
+- [docs/plugin-install-guide.md](docs/plugin-install-guide.md) — three install paths
+- [docs/dispatch-spec.md](docs/dispatch-spec.md) — JSON-RPC wire protocol
+- [docs/hermes-upgrade-v0.2.2.md](docs/hermes-upgrade-v0.2.2.md) — breaking-change upgrade guide for Hermes
+- [docs/delivery-v0.6.0-20260821.md](docs/delivery-v0.6.0-20260821.md) — release notes (historical)
+- [CHANGELOG.md](CHANGELOG.md) — version history
+- [CONTRIBUTING.md](CONTRIBUTING.md) — development workflow
+- [SECURITY.md](SECURITY.md) — vulnerability disclosure policy
+- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) — community standards
