@@ -31,7 +31,7 @@ import {
   pickParentAgent,
 } from './dispatch-task.mjs'
 
-export const VERSION = '0.7.0'
+export const VERSION = '0.8.0'
 const BEARER_TOKEN = process.env.HERMES_LINK_TOKEN || ''
 
 // Re-exports for backward compat (tests / external consumers).

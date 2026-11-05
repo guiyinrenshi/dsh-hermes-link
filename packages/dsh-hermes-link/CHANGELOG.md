@@ -1,5 +1,32 @@
 # dsh-hermes-link
 
+## 0.8.0
+
+### New: delegate TO Hermes (`hermes_dispatch`)
+
+Until now the bridge was one-directional in practice: Hermes could dispatch into
+DSH (`dispatch_task`), but DSH could only ask Hermes a question
+(`consult_hermes`, a file-based Q&A with no tools and no continuation).
+
+0.8.0 registers **`hermes` as a real dsh subagent provider** and adds the
+`hermes_dispatch` tool, so the direction is symmetric:
+
+- `ctx.subagents.registerProvider({ name: 'hermes', start(request) })` — an
+  external backend that runs Hermes' documented one-shot mode
+  (`hermes -z "<prompt>" --in <cwd> ...`), so the child keeps Hermes' tools,
+  memory, rules and `AGENTS.md`.
+- `hermes_dispatch(task, workdir?, model?, provider?, reasoning?, toolset?,
+  resume?, timeout_ms?)` starts that subagent, waits for the final text and
+  returns it. `resume` defaults to `latest`, i.e. the run continues the newest
+  Hermes session for the given working directory (`new` starts fresh).
+- `config.hermesBin` (or `HERMES_BIN`) overrides the CLI path; otherwise the
+  usual install locations and `PATH` are probed.
+- Abort/timeout and teardown go through the normal activation lifecycle, so the
+  child is killed rather than leaked.
+
+Also: `config.hermesHome` now accepts `hermesBin` alongside it, and the provider
+logs the resolved binary at boot.
+
 ## 0.7.0
 
 ### Compatibility release for dsh 0.2.x (verified on 0.2.1-rc.5)

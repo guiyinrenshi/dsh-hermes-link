@@ -24,6 +24,16 @@ These commits existed and the work shipped through subsequent published versions
 
 ---
 
+## [0.8.0] — 2026-11-05
+
+### Added
+
+- **Hermes as a DSH subagent** (`hermes_dispatch`): the fork now registers an
+  external `hermes` subagent provider backed by Hermes' one-shot CLI, so DSH can
+  delegate a task to Hermes and wait for its answer — the reverse of
+  `dispatch_task`. Continuity uses Hermes sessions (`--in <dir> --resume latest`).
+  `config.hermesBin` / `HERMES_BIN` override the CLI path.
+
 ## [0.7.0] — 2026-11-03
 
 ### dsh 0.2.x compatibility release (verified on dsh 0.2.1-rc.5)

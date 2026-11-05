@@ -73,10 +73,12 @@ import { createLoadHermesProjectMemoryTool } from './tools/load-hermes-project-m
 import { createReadHermesMemoryTool } from './tools/read-hermes-memory.mjs'
 import { createRotateOutboxNowTool } from './tools/rotate-outbox-now.mjs'
 import { createDispatchStatusTool } from './tools/dispatch-status.mjs'
+import { createHermesDispatchTool } from './tools/hermes-dispatch.mjs'
+import { createHermesProvider, resolveHermesBin } from './services/hermes-provider.mjs'
 
 const skillDir = fileURLToPath(new URL('./skills/dsh-hermes-link', import.meta.url))
 const MAX_FOUNDATION_SLICE_CHARS = 4096
-const VERSION = '0.7.0'
+const VERSION = '0.8.0'
 
 // -----------------------------------------------------------------------------
 // v0.3.2 F6 - register the canonical metric shape so the wire format is
@@ -182,6 +184,29 @@ function registerMetricsShape(metrics, { VERSION }) {
  * @param {object} [config] plugin config from the cordis patch entry
  * @returns {string} absolute Hermes Home path
  */
+/**
+ * Register the external `hermes` subagent provider (v0.8.0).
+ *
+ * dsh 0.2.x routes `startActivation({ provider: 'hermes' })` to this backend,
+ * which shells out to Hermes' one-shot mode. Optional: hosts without the
+ * subagent provider API (0.1.x) simply skip it, and the `hermes_dispatch` tool
+ * reports the host limitation instead of failing at boot.
+ */
+export function registerHermesSubagentProvider(ctx, config) {
+  const subagents = ctx && ctx.subagents
+  if (!subagents || typeof subagents.registerProvider !== 'function') {
+    console.warn('[dsh-hermes-link] host has no subagent provider API; hermes_dispatch will be unavailable')
+    return
+  }
+  const bin = resolveHermesBin(config && typeof config.hermesBin === 'string' ? config.hermesBin : undefined)
+  try {
+    ctx.effect(() => subagents.registerProvider(createHermesProvider({ bin })), 'dsh-hermes-link.hermes-provider')
+    console.log('[dsh-hermes-link v' + VERSION + '] subagent provider registered: hermes (' + bin + ')')
+  } catch (e) {
+    console.warn('[dsh-hermes-link] hermes subagent provider registration failed: ' + (e && e.message || e))
+  }
+}
+
 export function resolveHermesHome(config) {
   const configured = config && typeof config.hermesHome === 'string' ? config.hermesHome.trim() : ''
   if (configured) {
@@ -235,6 +260,7 @@ export const inject = ['skills', 'webServer', 'sessions', 'agents', 'subagents',
 
 export function apply(ctx, config) {
   const hermesHome = resolveHermesHome(config)
+  registerHermesSubagentProvider(ctx, config)
   console.log('[dsh-hermes-link v' + VERSION + '] applying; hermes_home=' + hermesHome)
 
   // 1. skill provider 闂?makes `@skill dsh-hermes-link` work
@@ -443,13 +469,16 @@ export function apply(ctx, config) {
       ctx.tools.register(createReadHermesMemoryTool({ hermesHome }))
       ctx.tools.register(createRotateOutboxNowTool({ outboxRotation }))
       ctx.tools.register(createDispatchStatusTool({ continuations, ctx }))
+      // v0.8.0: delegate TO Hermes (reverse of dispatch_task) through the
+      // external `hermes` subagent provider registered above.
+      ctx.tools.register(createHermesDispatchTool({ ctx, hermesBin: resolveHermesBin(config && typeof config.hermesBin === 'string' ? config.hermesBin : undefined) }))
       // v0.6.2 - the doctor, callable from the session (same module as the CLI
       // and the /mcp/collab/doctor route).
       ctx.tools.register(createDoctorTool({ hermesHome, sessionMirror, hermesOutbox, metrics }))
       // v0.6.9 - the one-glance status: the doctor's checks condensed into what a
       // person (or the agent) actually asks: is it working, and what do I do next?
       ctx.tools.register(createStatusTool({ hermesHome, sessionMirror, hermesOutbox, consultClient, metrics, importer }))
-      console.log('[dsh-hermes-link v' + VERSION + '] tools registered: list_hermes_sessions, import_hermes_session, load_hermes_persona, consult_hermes, mirror_session_to_hermes, session_mirror, load_hermes_project_memory, read_hermes_memory, rotate_outbox_now, dispatch_status, hermes_link_doctor')
+      console.log('[dsh-hermes-link v' + VERSION + '] tools registered: list_hermes_sessions, import_hermes_session, load_hermes_persona, consult_hermes, mirror_session_to_hermes, session_mirror, load_hermes_project_memory, read_hermes_memory, rotate_outbox_now, dispatch_status, hermes_link_doctor, hermes_dispatch')
     }
   } catch (e) {
     console.error('[dsh-hermes-link v' + VERSION + '] tool registration failed:', e && e.message || e)

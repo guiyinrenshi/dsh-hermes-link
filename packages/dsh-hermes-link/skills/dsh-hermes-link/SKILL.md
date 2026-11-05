@@ -1,6 +1,6 @@
 ---
 name: dsh-hermes-link
-description: Hermes ↔ DSH bidirectional link. Use when the user wants to import a Hermes session into DSH, load Hermes persona (SOUL + config), load Hermes memory scoped to the current working directory, dispatch a task to a DSH sub-agent (one-shot or continuable), amend a running sub-agent, push a result to / consult Hermes from DSH, or see Hermes's conversation record in DSH. The plugin targets v0.7.0 (dsh 0.2.x compatible): it does NOT auto-inject Hermes turns into the current session (v0.3.6), it mirrors DSH sessions to Hermes ONLY for cwds that provably match a real Hermes project (HERMES_LINK_MIRROR_POLICY, default scoped since v0.6.0; off = manual opt-in, all = every session; hermes-* and noise events are always skipped), and it does NOT auto-load Hermes MEMORY.md (v0.2.3); every other cross-project channel remains explicit opt-in only.
+description: Hermes ↔ DSH bidirectional link. Use when the user wants to import a Hermes session into DSH, load Hermes persona (SOUL + config), load Hermes memory scoped to the current working directory, dispatch a task to a DSH sub-agent (one-shot or continuable), amend a running sub-agent, push a result to / consult Hermes from DSH, or see Hermes's conversation record in DSH. The plugin targets v0.8.0 (dsh 0.2.x compatible): it does NOT auto-inject Hermes turns into the current session (v0.3.6), it mirrors DSH sessions to Hermes ONLY for cwds that provably match a real Hermes project (HERMES_LINK_MIRROR_POLICY, default scoped since v0.6.0; off = manual opt-in, all = every session; hermes-* and noise events are always skipped), and it does NOT auto-load Hermes MEMORY.md (v0.2.3); every other cross-project channel remains explicit opt-in only.
 when_to_use: |
   The dsh-hermes-link plugin connects DSH to a Hermes Agent installation. DSH-side
   tools (callable from this session):
@@ -8,6 +8,7 @@ when_to_use: |
     - import_hermes_session        — convert a Hermes session archive to a live DSH session, seed it with full history
     - load_hermes_persona          — load Hermes SOUL.md + relevant config slices into the current session (v0.2.3: NO LONGER reads MEMORY.md)
     - load_hermes_project_memory   — cwd-scoped Hermes MEMORY.md loader (matches ONLY this project's Hermes sessions)
+    - hermes_dispatch              — v0.8.0: delegate a task TO Hermes (reverse of dispatch_task); runs Hermes' own one-shot mode as a subagent, with session continuity
     - read_hermes_memory           — v0.7.0: read Hermes long-term memory (memories/MEMORY.md) + user profile (memories/USER.md) verbatim; the only way to reach them when Hermes runs on another host (no cwd overlap)
     - consult_hermes               — ask Hermes a question (file-based async; secret-suffixed reply required since v0.2.2)
     - mirror_session_to_hermes     — opt-in V4 session mirror with secret-pattern redaction (v0.2.2; cookies + JWTs + API keys covered since v0.2.3)
@@ -118,6 +119,7 @@ DSH-side plugin that makes Hermes Agent and DeepSeek Harness a single, bidirecti
 | `import_hermes_session` | Convert one archive to a live DSH session via `ctx.sessions.create(id, { seed, meta })`. Idempotent on session id. |
 | `load_hermes_persona` | Inject Hermes persona into current session. `scope: all\|soul\|memory\|config`. |
 | `load_hermes_project_memory` | cwd-scoped Hermes MEMORY.md loader. Returns ONLY lines whose context matches `agent.session.header.cwd`. Empty when no Hermes state.db session matches. |
+| `hermes_dispatch` | v0.8.0. Starts a `hermes` subagent through the external provider and returns its final answer. Options: `workdir` (also selects the resumable Hermes session), `model`, `provider`, `reasoning`, `toolset`, `resume` (`latest` / id / `new`), `timeout_ms`. |
 | `read_hermes_memory` | v0.7.0. Reads `memories/MEMORY.md` and `memories/USER.md` whole (per-file `max_bytes` cap, default 32 KiB). Read-only; needed for cross-machine setups where the cwd never overlaps. |
 | `consult_hermes` | Async file-based question to Hermes. v0.2.2: reply file MUST carry the secret suffix `<ticket>-<secret>.json`; legacy `<ticket>.json` is accepted only when `HERMES_LINK_TRUST_LEGACY=1`. |
 | `mirror_session_to_hermes` | Opt-in V4 mirror (v0.2.2). Walks the current DSH session's events, redacts API keys / tokens / passwords / PEM / JWTs by default (`redact: false` to opt out), appends to `Hermes Home/inbox/dsh/session-mirror/<sid>.jsonl`. NOT automatic. |

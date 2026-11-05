@@ -70,6 +70,7 @@ Earlier we ran this as three separate plugins (`hermes-foundation`, `hermes-ones
 | `load_hermes_persona` | inject Hermes SOUL.md + config into the current session (v0.2.3: no longer reads MEMORY.md) |
 | `load_hermes_project_memory` | cwd-scoped Hermes MEMORY.md loader (matches only this project's Hermes sessions) |
 | `read_hermes_memory` | Hermes long-term memory (`memories/MEMORY.md`) and user profile (`memories/USER.md`), read-only with a per-file byte cap. Added in 0.7.0 for cross-machine setups where the cwd never overlaps. |
+| `hermes_dispatch` | v0.8.0. Delegate a task **to** Hermes and wait for its answer: starts a real `hermes` subagent (its own tools/memory/rules), continuity through Hermes sessions (`--in <dir> --resume latest`). This is the reverse of `dispatch_task`. |
 | `consult_hermes` | ask Hermes a question (file-based async; reply must carry secret suffix since v0.2.2) |
 | `mirror_session_to_hermes` | opt-in V4 mirror with secret-pattern redaction (v0.2.2; cookies / JWTs / API keys / set-cookie / session_id redacted) |
 | `session_mirror` | automatic mirror switch: `enable` / `disable` / `status` for the current DSH session (always redacted). Since v0.6.0 the default policy `HERMES_LINK_MIRROR_POLICY=scoped` auto-enables it for sessions whose cwd matches a real Hermes project; `disable` is a durable opt-out |
@@ -106,6 +107,31 @@ Every silently broken channel this project has hit was invisible to source readi
 - **signals** (v0.6.5): the report also carries what each channel has *actually done* — dispatches, imports, consults, mirror sessions enabled, outbox notifications, events skipped, expiry markers, queue depth, SSE channels, uptime — parsed from the same registry that backs `GET /mcp/collab/metrics` (one parser, so the two can never report different numbers). "No failures" and "no traffic" look identical otherwise, which is exactly how three dead channels survived a code-reading audit; the CLI reads the live numbers over HTTP when you pass `--url` (add `--token` for an auth-gated deployment).
 - Exit code 1 when a channel is broken (`--strict` also fails on warnings); `--json` for scripting.
 - The consult channel also gets a **TTL sweep** (hourly): a ticket with no reply past 24h is marked with a non-destructive `<ticket>.expired.json` beside it — countable via `hermes_link_consult_expired_total` — and the ticket itself is kept, so a late reply is still accepted.
+
+### Dispatch TO Hermes (`hermes_dispatch`, v0.8.0)
+
+The bridge is symmetric now. `dispatch_task` is Hermes → DSH; `hermes_dispatch`
+is DSH → Hermes:
+
+```
+hermes_dispatch(
+  task        = "review this patch for SQL injection",
+  workdir     = "/srv/project",   # also selects the resumable Hermes session
+  resume      = "latest",         # or a session id/title, or "new"
+  model       = "", provider = "", reasoning = "", toolset = "",
+  timeout_ms  = 600000
+)
+```
+
+It starts a **real `hermes` subagent** (registered as a dsh external subagent
+provider) which runs Hermes' one-shot mode (`hermes -z`), so the child keeps
+Hermes' tools, memory, rules and `AGENTS.md`. Continuity is Hermes' own session
+store: the next call with the same `workdir` and `resume: "latest"` continues
+that conversation.
+
+Set `config.hermesBin` (cordis patch) or `HERMES_BIN` when the CLI is not on
+`PATH`; otherwise `~/.local/bin/hermes`, `/usr/local/bin/hermes` and `PATH` are
+probed.
 
 ### Security boundaries
 

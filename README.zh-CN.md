@@ -11,7 +11,7 @@
 [![Node >=20](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](package.json)
 [![dsh-plugin](https://img.shields.io/badge/dsh--plugin-blue)](https://github.com/dsh-market/awesome-dsh-plugin)
 
-> 当前版本：v0.7.0
+> 当前版本：v0.8.0
 > **Hermes Agent** 与 **DeepSeek Harness (DSH)** 的双向桥接：Hermes 通过 `POST /mcp/collab` JSON-RPC 派任务（一次性或可持续），DSH 启动子 agent 执行、返回真实测量的 token，并允许你**把任意 Hermes 会话作为原生 DSH 会话继续**。
 
 [English](README.md) | **简体中文**
@@ -66,6 +66,7 @@ Hermes 是任务编排器 —— 规划工作、选择 skill、加载知识切�
 | `load_hermes_persona` | 把 Hermes SOUL.md + config 注入当前会话（v0.2.3 起**不再读 MEMORY.md**）|
 | `load_hermes_project_memory` | cwd-scoped Hermes MEMORY.md 加载（只匹配本项目的 Hermes 会话） |
 | `read_hermes_memory` | 读取 Hermes 长期记忆（`memories/MEMORY.md`）与用户画像（`memories/USER.md`），只读、单文件字节上限。0.7.0 新增，用于 Hermes 在另一台机器、cwd 不重叠的跨机器场景。 |
+| `hermes_dispatch` | v0.8.0 新增。把任务**交给 Hermes** 并等它回答：启动真正的 `hermes` 子代理（带 Hermes 自己的工具/记忆/规则），用 Hermes 会话保持连续（`--in <目录> --resume latest`）。方向与 `dispatch_task` 相反。 |
 | `consult_hermes` | 问 Hermes 问题（文件通道 + secret 后缀回复，v0.3.4+） |
 | `mirror_session_to_hermes` | 手动 mirror 当前 DSH 会话到 Hermes（含 cookie / JWT / API key / set-cookie / session_id redact，v0.2.3+） |
 | `session_mirror` | v0.6.0 opt-in 自动 mirror 开关：对当前 DSH 会话 `enable` / `disable` / `status`（默认关闭，自动脱敏） |
@@ -81,6 +82,28 @@ Hermes 是任务编排器 —— 规划工作、选择 skill、加载知识切�
 - **amend watcher**（H4 nonce-bound）把 Hermes 的中途 amend 投递给运行中的可持续子 agent
 - **session mirror** 为 v0.6.0 逐会话 opt-in：调用 `session_mirror action=enable` 后，新事件会脱敏写入 `Hermes Home/inbox/dsh/session-mirror/<sid>.jsonl`；Hermes 也可订阅 `GET /mcp/collab/session-stream?session_id=<sid>` 实时 SSE
 - **Hermes Home 自动探测**：`HERMES_HOME` env → Windows `%LOCALAPPDATA%\hermes` → POSIX `~/.local/share/hermes`
+
+### 把任务交给 Hermes（`hermes_dispatch`，v0.8.0）
+
+桥现在是双向对称的：`dispatch_task` 是 Hermes → DSH，`hermes_dispatch` 是 DSH → Hermes：
+
+```
+hermes_dispatch(
+  task        = "帮我审查这个补丁是否有 SQL 注入",
+  workdir     = "/srv/project",   # 同时决定续接哪个 Hermes 会话
+  resume      = "latest",         # 或会话 id/标题，或 "new"
+  model       = "", provider = "", reasoning = "", toolset = "",
+  timeout_ms  = 600000
+)
+```
+
+它会启动一个**真正的 `hermes` 子代理**（注册为 dsh 的外部子代理 provider），
+在子代理里跑 Hermes 的一次性模式（`hermes -z`），因此保留 Hermes 自己的工具、记忆、
+规则与 `AGENTS.md`。连续性由 Hermes 自己的会话存储负责：同样的 `workdir` + `resume: "latest"`
+就会接着上一次对话。
+
+CLI 不在 `PATH` 时用 `config.hermesBin`（cordis patch）或 `HERMES_BIN` 指定，
+否则会依次探测 `~/.local/bin/hermes`、`/usr/local/bin/hermes` 与 `PATH`。
 
 ### 安全边界
 
