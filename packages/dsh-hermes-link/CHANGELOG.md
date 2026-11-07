@@ -1,5 +1,37 @@
 # dsh-hermes-link
 
+## 0.8.1
+
+### Fixed: imported conversations could not be resumed
+
+0.7.0/0.8.0 recorded `agentPreset: 'hermes-imported'` on every imported session.
+dsh never ships that preset (`standard`, `ptc`, `minimal`, `cordis` are the
+built-ins), so opening an imported conversation failed with
+
+```
+resume failed for session "hermes-...": RemoteError: Unknown agent preset: hermes-imported
+```
+
+- The importer no longer pins a preset blindly: `decideImportPreset()` asks the
+  host's `agentPresets` registry and only keeps the id when it is declared —
+  otherwise the header omits `agentPreset`, so the session resumes under the
+  host default preset exactly like a GUI-created session.
+- Sessions already on disk are repaired by a new command:
+
+  ```sh
+  npx hermes-link-repair-agent-preset --dry-run   # report only
+  npx hermes-link-repair-agent-preset             # rewrite + .bak-agentpreset-<stamp> backups
+  npx hermes-link-repair-agent-preset --to standard   # pin a specific preset instead
+  ```
+
+  It rewrites only the header line of `session.v4.jsonl.zstd`, keeps every event,
+  backs each file up first, and is idempotent (a second run reports 0 changes).
+
+### Tests
+
+- `scripts/test-agent-preset-repair.mjs`: registry probing, strip semantics,
+  header rewrite (events preserved), `--to`, unrelated presets, malformed input.
+
 ## 0.8.0
 
 ### New: delegate TO Hermes (`hermes_dispatch`)

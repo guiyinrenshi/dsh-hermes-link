@@ -255,3 +255,4 @@ Or via `dsh-market`. Both clean up:
 - `audit.jsonl` / `continuables.sqlite` left in place (operator archives separately)
 
 Imported Hermes sessions remain in `~/.dsh/sessions/` — deleting them is operator's choice.
+| `Unknown agent preset: hermes-imported` when opening an imported conversation | sessions imported by 0.7.x/0.8.0 pinned a preset dsh does not ship; run `npx hermes-link-repair-agent-preset` (0.8.1+) and reopen |

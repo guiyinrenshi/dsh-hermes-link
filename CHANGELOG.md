@@ -24,6 +24,17 @@ These commits existed and the work shipped through subsequent published versions
 
 ---
 
+## [0.8.1] — 2026-11-07
+
+### Fixed
+
+- **Imported conversations resume again.** 0.7.x/0.8.0 pinned
+  `agentPreset: 'hermes-imported'`, a preset dsh does not ship, so opening an
+  imported session failed with `Unknown agent preset`. The importer now pins a
+  preset only when the host declares it, and
+  `npx hermes-link-repair-agent-preset` migrates existing sessions (header-only
+  rewrite, backups kept).
+
 ## [0.8.0] — 2026-11-05
 
 ### Added

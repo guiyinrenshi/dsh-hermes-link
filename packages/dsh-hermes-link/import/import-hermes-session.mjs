@@ -26,6 +26,7 @@ import { rm } from 'node:fs/promises'
 import { join, dirname, normalize } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { sessionEvents, sessionSeq } from '../services/host-session.mjs'
+import { decideImportPreset } from '../services/agent-preset-repair.mjs'
 
 // The converter is imported DYNAMICALLY with a cache-busting query so edits to
 // request-dump-to-events.mjs take effect on the next import without restarting
@@ -882,6 +883,13 @@ export function createImporter({ ctx, hermesHome, workspaceDir, defaultModel }) 
     //     the missing isSeeded were refused outright.
     //   - cwd is optional but must be absolute; delegationDepth a safe int >= 0.
     const version = await resolveSessionFormatVersion()
+    // v0.8.1: only pin a preset the host actually declares. Up to 0.8.0 every
+    // import recorded `agentPreset: 'hermes-imported'`, a name dsh never ships
+    // (`standard`, `ptc`, `minimal`, `cordis`), so resuming the conversation
+    // failed with "Unknown agent preset: hermes-imported". Omitting the field
+    // makes the session resume under the host default preset, exactly like a
+    // session created in the GUI.
+    const importPreset = await decideImportPreset(ctx)
     const header = {
       version,
       id: dshSessionId,
@@ -889,7 +897,7 @@ export function createImporter({ ctx, hermesHome, workspaceDir, defaultModel }) 
       isSeeded: false,
       delegationDepth: 0,
       ...(finalCwd ? { cwd: finalCwd } : {}),
-      agentPreset: 'hermes-imported',
+      ...(importPreset ? { agentPreset: importPreset } : {}),
     }
 
     let handle
