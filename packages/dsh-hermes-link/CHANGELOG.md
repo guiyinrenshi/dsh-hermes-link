@@ -1,5 +1,22 @@
 # dsh-hermes-link
 
+## 0.8.3
+
+### Fixed: the repair command wrote unreadable session files
+
+0.8.1/0.8.2 shipped `hermes-link-repair-agent-preset` with a framing bug: it
+re-compressed the whole log into ONE zstd frame, while the jsonl backend requires
+the header to be its own first frame ("first frame is not exactly one header
+line"). Running it made sessions disappear from the Hermes workspace.
+
+- The rewrite now emits **two frames**: header + newline as frame one, events as
+  frame two, and self-checks that frame one decodes to exactly the header line.
+- `tests/test-agent-preset-repair.mjs` pins the frame contract (a test now fails
+  if a future change collapses the frames again).
+- If you already ran the broken command, restore the `.bak-agentpreset-<stamp>`
+  backups (or delete the affected `hermes-*` directories and let the startup sync
+  re-import them), then run the 0.8.3 command.
+
 ## 0.8.2
 
 Re-publish of 0.8.1. The 0.8.1 npm release accepted its metadata but never

@@ -43,7 +43,7 @@ function makeLog(header, events) {
   return zlib.zstdCompressSync(Buffer.from([JSON.stringify(header), ...events.map((e) => JSON.stringify(e))].join('\n'), 'utf8'))
 }
 function readLog(buf) {
-  return zlib.zstdDecompressSync(buf).toString('utf8').split('\n').map((l) => JSON.parse(l))
+  return zlib.zstdDecompressSync(buf).toString('utf8').split('\n').filter((l) => l.trim().length > 0).map((l) => JSON.parse(l))
 }
 
 await t('rewriteStoredHeader: drops the stale pin and keeps every event', () => {
@@ -56,6 +56,21 @@ await t('rewriteStoredHeader: drops the stale pin and keeps every event', () => 
   eq(Object.prototype.hasOwnProperty.call(lines[0], 'agentPreset'), false, 'pin removed')
   eq(lines[0].id, 'hermes-x')
   eq(lines[2], events[1], 'events untouched')
+})
+
+await t('rewriteStoredHeader: emits the header as its own zstd frame', () => {
+  const header = { type: 'session', version: 4, id: 'hermes-f', agentPreset: LEGACY_IMPORT_PRESET }
+  const events = [{ type: 'turn/start', seq: 0, time: 1, data: { turn: 1 } }]
+  const out = rewriteStoredHeader(makeLog(header, events), {})
+  // The jsonl backend requires the first frame to decode to exactly one line.
+  const headerLine = zlib.zstdDecompressSync(out.data.subarray(0, out.data.length)).toString('utf8').split('\n')[0]
+  const expectedFrame = zlib.zstdCompressSync(Buffer.from(headerLine + '\n'))
+  if (!out.data.subarray(0, expectedFrame.length).equals(expectedFrame)) {
+    throw new Error('first frame is not a standalone header frame')
+  }
+  const whole = zlib.zstdDecompressSync(out.data).toString('utf8')
+  if (!whole.startsWith(headerLine + '\n')) throw new Error('header not first line')
+  if (!whole.includes('turn/start')) throw new Error('events lost')
 })
 
 await t('rewriteStoredHeader: --to pins another preset instead of omitting', () => {

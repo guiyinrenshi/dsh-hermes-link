@@ -24,6 +24,16 @@ These commits existed and the work shipped through subsequent published versions
 
 ---
 
+## [0.8.3] — 2026-11-07
+
+### Fixed
+
+- **The agent-preset repair command no longer breaks sessions.** 0.8.1/0.8.2
+  re-compressed the whole log into one zstd frame, violating the jsonl backend's
+  "header must be its own first frame" contract, so repaired sessions vanished
+  from the Hermes workspace. The rewrite now writes two frames and self-checks
+  the header frame.
+
 ## [0.8.2] — 2026-11-07
 
 ### Fixed (packaging)

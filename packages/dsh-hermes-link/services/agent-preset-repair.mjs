@@ -75,7 +75,19 @@ export function rewriteStoredHeader(compressed, { from = LEGACY_IMPORT_PRESET, t
   const nextHeader = to
     ? { ...header, agentPreset: to }
     : stripAgentPreset(header, null)
-  lines[0] = JSON.stringify(nextHeader)
-  const data = zlib.zstdCompressSync(Buffer.from(lines.join('\n'), 'utf8'))
-  return { changed: true, header: nextHeader, data }
+  const nextHeaderJson = JSON.stringify(nextHeader)
+  // The jsonl backend stores the header in its OWN zstd frame and asserts that
+  // this first frame decodes to exactly one line:
+  //   "corrupt Zstandard session log: first frame is not exactly one header line"
+  // (plaintext must end with the only newline). Compressing header+events into
+  // one frame silently makes the session unreadable, so emit two frames.
+  const frameHeader = zlib.zstdCompressSync(Buffer.from(nextHeaderJson + '\n', 'utf8'))
+  const decodedHeader = zlib.zstdDecompressSync(frameHeader).toString('utf8')
+  if (decodedHeader !== nextHeaderJson + '\n') {
+    throw new Error('agent-preset repair: header frame self-check failed')
+  }
+  const rest = lines.slice(1).join('\n')
+  const frames = [frameHeader]
+  if (rest.length > 0) frames.push(zlib.zstdCompressSync(Buffer.from(rest, 'utf8')))
+  return { changed: true, header: nextHeader, data: Buffer.concat(frames) }
 }
