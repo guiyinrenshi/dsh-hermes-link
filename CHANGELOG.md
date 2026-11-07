@@ -24,6 +24,26 @@ These commits existed and the work shipped through subsequent published versions
 
 ---
 
+## [0.8.5] — 2026-11-07
+
+### Fixed
+
+- **Imported conversations no longer send an all-deferred tool request.** 0.8.4
+  emptied `request/header.tools`, so dsh treated every live tool as a deferred
+  `tool-addition` and the provider rejected the turn. The header now records the
+  host's live tool snapshot. Re-import existing sessions.
+
+## [0.8.4] — 2026-11-07
+
+### Fixed
+
+- **Resuming an imported conversation no longer hits "All tools cannot be
+  deferred".** The importer stopped copying Hermes' 100+ tool definitions into
+  `request/header.tools`; dsh folded them into the tool baseline, and the
+  addition-only projection then produced an all-`defer_loading` request that the
+  provider rejects. Re-import existing sessions (delete `hermes-*` dirs, let the
+  startup sync rebuild them).
+
 ## [0.8.3] — 2026-11-07
 
 ### Fixed

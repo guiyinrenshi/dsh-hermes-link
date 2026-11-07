@@ -118,7 +118,7 @@ function createToolResultMessage(input) {
  * @param {object} dump   parsed request_dump JSON
  * @param {number} baseTime  base unix-ms; per-event time = baseTime + seq*1000
  */
-export function requestDumpToEvents(dump, baseTime = Date.now()) {
+export function requestDumpToEvents(dump, baseTime = Date.now(), options = {}) {
   const body     = dump && dump.request && dump.request.body
   const model    = (body && body.model) || 'unknown'
   // provider is always 'dsh-hermes-link' for imported history (the originating model is
@@ -153,15 +153,31 @@ export function requestDumpToEvents(dump, baseTime = Date.now()) {
   //    omitted"  (asserted when header.tools is [] or header.adapterDefaults is {})
   // A Hermes dump carries no tools array when the session used none, so the old
   // unconditional empty tools array failed every such import at append time.
-  const headerTools = tools.map((t) => toCleanJson({
-    name: t && t.name,
-    description: t && t.description,
-    input_schema: t && t.input_schema,
-  })).filter((t) => t && t.name)
+  // v0.8.4: do NOT copy Hermes' tool catalogue into the epoch header.
+  //
+  // dsh folds `request/header.tools` into the session's tool baseline. On resume
+  // its `addition-only` tool projection keeps only baseline names that are still
+  // live, then adds developer-message increments as `deferLoading: true`. The
+  // Hermes catalogue (130 names) matches no live dsh tool, so the projection
+  // came out all-deferred and the provider refused the turn:
+  //   "tools: at least one tool must have defer_loading=false.
+  //    All tools cannot be deferred."
+  // The catalogue is provenance only; the live agent gets its real toolset from
+  // the preset, so the header now carries just { config }.
+  // v0.8.5: the epoch header must carry the HOST's live tool catalogue.
+  //
+  // dsh folds header.tools into the session tool baseline and marks every later
+  // `tool-addition` increment as `deferLoading: true`. With an empty/foreign
+  // baseline every tool arrives as a deferred increment and the provider rejects
+  // the turn:
+  //   "tools: at least one tool must have defer_loading=false."
+  // The caller passes the live snapshot (ctx.tools.schemas()); a name already in
+  // the baseline is skipped by the projection, so resuming sends the real,
+  // immediately-available toolset.
+  const headerTools = Array.isArray(options.tools) ? options.tools : []
   const headerData = {
     header: {
       config: { provider, model },
-      // omitted entirely when empty (v3 canonical-payload rule above)
       ...(headerTools.length > 0 ? { tools: headerTools } : {}),
     },
     reason: 'initial',

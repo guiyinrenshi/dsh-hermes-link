@@ -1,5 +1,44 @@
 # dsh-hermes-link
 
+## 0.8.5
+
+### Fixed: imported sessions sent an all-deferred tool request
+
+0.8.4 removed the Hermes catalogue from `request/header.tools`, which left the
+session tool baseline EMPTY. dsh marks every later `tool-addition` increment as
+`deferLoading: true`, so resuming then sent only deferred tools and the provider
+rejected the turn ("at least one tool must have defer_loading=false").
+
+The header now records the **host's live tool catalogue** (`ctx.tools.schemas()`
+snapshot). Names already present in the baseline are skipped by the projection
+instead of being re-added as deferred increments, so resuming offers the real,
+immediately-available toolset.
+
+Re-import existing conversations (delete the `hermes-*` directories; the startup
+sync rebuilds them).
+
+## 0.8.4
+
+### Fixed: resuming an imported conversation failed with "All tools cannot be deferred"
+
+The importer copied Hermes' tool catalogue (100+ definitions) into
+`request/header.tools`. dsh folds that into the session's tool baseline; on
+resume the `addition-only` projection kept only baseline names that are still
+live (none of the Hermes names exist in dsh), leaving only deferred increments,
+so the provider rejected the turn:
+
+```
+tools: at least one tool must have defer_loading=false. All tools cannot be deferred.
+```
+
+The header now carries only `{ config: { provider, model } }`. The live agent
+gets its real toolset from the preset, so nothing is lost.
+
+**Migrating existing imports:** the Hermes dumps are the source of truth, so
+delete the affected `hermes-*` session directories and let the startup auto-sync
+re-import them (ids and titles are stable). Editing the stored events in place is
+not supported because dropping/deferring tool records would break seq density.
+
 ## 0.8.3
 
 ### Fixed: the repair command wrote unreadable session files

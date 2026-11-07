@@ -1,6 +1,6 @@
 {
   "name": "dsh-hermes-link",
-  "version": "0.8.3",
+  "version": "0.8.5",
   "description": "Bidirectional bridge between Hermes Agent and DeepSeek Harness, compatible with dsh 0.2.x (subagents facade startActivation/prompt, session format v4). Hermes dispatches focused tasks via JSON-RPC over POST /mcp/collab (one-shot or continuable, nonce-bound amend, secret-bound consult reply); DSH lets you continue Hermes sessions as native DSH sessions in the sidebar.",
   "type": "module",
   "main": "./index.mjs",

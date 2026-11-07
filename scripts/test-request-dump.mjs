@@ -201,7 +201,11 @@ t('case 6: empty messages → no user/assistant events, just boundary', () => {
   ])
 })
 
-t('case 7: tools array passed through to request/header', () => {
+t('case 7: the Hermes tool catalogue is NOT copied into request/header', () => {
+  // v0.8.4: dsh folds header.tools into the session tool baseline; the Hermes
+  // catalogue matches no live dsh tool, and the addition-only projection then
+  // yielded an all-deferred request, which the provider rejects with
+  //   "at least one tool must have defer_loading=false".
   const dump = mkDump({
     session_id: 's7',
     body: mkBaseBody({
@@ -209,11 +213,18 @@ t('case 7: tools array passed through to request/header', () => {
       tools: [{ name: 'web_search', description: 'search', input_schema: { type: 'object' } }],
     }),
   })
-  const { events } = requestDumpToEvents(dump, 7000)
+  const snapshot = [{ name: 'fs_read', description: 'read a file', parameters: { type: 'object' } }]
+  const { events } = requestDumpToEvents(dump, 7000, { tools: snapshot })
   const hdr = events.find((e) => e.type === 'request/header')
-  assert.equal(hdr.data.header.tools.length, 1)
-  assert.equal(hdr.data.header.tools[0].name, 'web_search')
+  // v0.8.5: the baseline must be the HOST catalogue, never the Hermes one.
+  assert.deepEqual(hdr.data.header.tools, snapshot)
+  assert.equal(hdr.data.header.tools[0].name, 'fs_read')
   assert.equal(hdr.data.reason, 'initial')
+  assert.equal(hdr.data.header.config.provider, 'dsh-hermes-link')
+
+  // without a snapshot the optional field is omitted entirely
+  const bare = requestDumpToEvents(dump, 7000).events.find((e) => e.type === 'request/header')
+  assert.equal(bare.data.header.tools, undefined)
 })
 
 t('case 8: groupBySession picks latest mtime per session_id', () => {

@@ -833,7 +833,7 @@ export function createImporter({ ctx, hermesHome, workspaceDir, defaultModel }) 
     }
 
     const { requestDumpToEvents } = await loadConverter()
-    const { events } = requestDumpToEvents(dump)
+    const { events } = requestDumpToEvents(dump, Date.now(), { tools: snapshotLiveTools(ctx) })
 
     // Title: state.db title, else first-user snippet + date.
     const title = info.title || makeTitle(info.first_user_snippet, info.session_id)
@@ -1073,6 +1073,31 @@ export function createImporter({ ctx, hermesHome, workspaceDir, defaultModel }) 
    * takes write ownership; the handle is always closed.
    * @returns {Promise<readonly object[]>}
    */
+  /**
+   * Snapshot the HOST's live tool definitions for the imported session header.
+   *
+   * dsh treats `header.tools` as the session's tool baseline; anything added
+   * later (developer/message tool-addition) is marked `deferLoading: true` and
+   * must be accompanied by at least one immediately-loaded tool. Writing no
+   * baseline (0.8.4) made every resume send an all-deferred request, which the
+   * provider rejects. The live catalogue is the right baseline: names already in
+   * it are skipped by the projection instead of re-added as deferred.
+   * @returns {object[]} tool schemas ({name, description, parameters}), or []
+   */
+  function snapshotLiveTools(ctxArg) {
+    try {
+      const tools = ctxArg && ctxArg.tools
+      if (!tools || typeof tools.schemas !== 'function') return []
+      const list = tools.schemas()
+      if (!Array.isArray(list)) return []
+      return list
+        .filter((tool) => tool && typeof tool.name === 'string' && tool.name.length > 0)
+        .map((tool) => ({ name: tool.name, ...(tool.description === undefined ? {} : { description: tool.description }), ...(tool.parameters === undefined ? {} : { parameters: tool.parameters }) }))
+    } catch {
+      return []
+    }
+  }
+
   /**
    * Warm the host's projection cache for a session written straight to
    * persistence. The sidebar listing reads the LAST checkpoint from
