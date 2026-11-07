@@ -24,6 +24,13 @@ These commits existed and the work shipped through subsequent published versions
 
 ---
 
+## [0.8.2] — 2026-11-07
+
+### Fixed (packaging)
+
+- Re-publish of 0.8.1, whose npm release left the tarball missing (metadata
+  accepted, `dsh-hermes-link-0.8.1.tgz` 404). Content is identical; install 0.8.2.
+
 ## [0.8.1] — 2026-11-07
 
 ### Fixed

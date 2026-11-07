@@ -8,7 +8,7 @@
     "zh": "Hermes Agent 与 DeepSeek Harness 的双向桥接：Hermes 通过 JSON-RPC 派任务（一次性或可持续），DSH 启动子 agent 执行，并允许用户把 Hermes 会话作为原生 DSH 会话在侧边栏继续对话。"
   },
   "npm": "dsh-hermes-link",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "stars": null,
   "downloads": null,
   "install": "npm:dsh-hermes-link",

@@ -1,5 +1,11 @@
 # dsh-hermes-link
 
+## 0.8.2
+
+Re-publish of 0.8.1. The 0.8.1 npm release accepted its metadata but never
+finished uploading the tarball (`.../dsh-hermes-link-0.8.1.tgz` answers 404), so
+`npm i dsh-hermes-link@0.8.1` fails. Nothing else changed: install 0.8.2.
+
 ## 0.8.1
 
 ### Fixed: imported conversations could not be resumed
