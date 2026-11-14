@@ -1,5 +1,25 @@
 # dsh-hermes-link
 
+## 0.8.6
+
+### Fixed: a session could be pinned to a preset the host cannot resume
+
+`decideImportPreset` (0.8.1) only asked whether the alias preset id was PRESENT in
+`agentPresets.list()`. dsh keeps a preset whose tree failed to mount in the roster and
+marks the row `broken`; such a preset is as unopenable as a missing one, and the failure
+is final for the process. After a dsh upgrade that removed a subpath export
+(`@deepseek-ai/dsh-tool-subagent-control/list-agents`, gone since 0.2.1-rc.3, issue #1940)
+every imported session was pinned to an alias that threw `agent-preset/invalid` on resume --
+in the Web GUI the row simply vanished when you clicked it.
+
+The guard now honours `broken` and `enabled`. New `services/preset-health.mjs` answers the
+same question from three sources (live roster, profile YAML audit against the installed
+packages' `exports` maps, and the stored headers), exposes it as the doctor check
+`imported_agent_preset`, warns at startup after the auto-sync pass, and can unpin the
+sessions: `hermes-link-repair-agent-preset --check` / `--from auto`. Rewriting headers is
+opt-in (`repairAgentPins: true`); a restart is always required afterwards, because a mount
+failure is final.
+
 ## 0.8.5
 
 ### Fixed: imported sessions sent an all-deferred tool request

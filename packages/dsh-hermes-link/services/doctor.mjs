@@ -11,7 +11,7 @@
 // module measures: filesystem freshness, backlog, writability, and -- when the
 // caller supplies the live services -- the in-process policy decisions.
 //
-// It is deliberately plain (no cordis, no imports from the plugin) so the same
+// It is deliberately plain (no cordis) so the same
 // code backs all three surfaces:
 //   * scripts/hermes-link-doctor.mjs   (CLI, filesystem truth)
 //   * GET /mcp/collab/doctor           (in-process truth, via index.mjs services)
@@ -22,6 +22,7 @@
 
 import { existsSync, readdirSync, statSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { presetHealthCheck } from './preset-health.mjs'
 
 /** Freshness thresholds; override per call (tests) or with the CLI flags. */
 export const DOCTOR_TTLS = Object.freeze({
@@ -122,9 +123,12 @@ function readJson(path) {
  * @param {object} [args.metrics] the metrics registry (anything with serialize()); when
  *   present the report carries a `signals` check with the numbers that say whether each
  *   channel has moved at all
+ * @param {Function} [args.presetHealth] v0.8.6: optional async () => {rows, scan, audit}
+ *   (services/preset-health.mjs collectPresetHealth). Without it the preset check reports
+ *   warn rather than silently passing, so a surface cannot forget to wire it.
  * @returns {Promise<object>} report
  */
-export async function runDoctor({ hermesHome, dshHome, live = null, now = Date.now(), ttl = {}, scanImportedPins = null, metrics = null } = {}) {
+export async function runDoctor({ hermesHome, dshHome, live = null, now = Date.now(), ttl = {}, scanImportedPins = null, metrics = null, presetHealth = null } = {}) {
   const T = { ...DOCTOR_TTLS, ...ttl }
   const checks = []
   const inboxDsh = join(hermesHome, 'inbox', 'dsh')
@@ -350,6 +354,24 @@ export async function runDoctor({ hermesHome, dshHome, live = null, now = Date.n
       checks.push(warn('imported_model_pin', 'imported session model pins', 'scan threw: ' + (e && e.message || e)))
     }
   }
+
+  // ---- 7. the agent preset every imported session pins (v0.8.6) --------------
+  //
+  // A pinned preset the host cannot mount makes resume throw agent-preset/invalid,
+  // the activation disposes the session, and the sidebar row disappears -- which is
+  // what happened on dsh 0.2.2-rc.2 after a preset row named the ./list-agents
+  // subpath dropped in 0.2.1-rc.3. This check says it out loud.
+  if (typeof presetHealth === 'function') {
+    try {
+      checks.push(presetHealthCheck(await presetHealth()))
+    } catch (e) {
+      checks.push(warn('imported_agent_preset', 'imported session agent-preset pins', 'check threw: ' + (e && e.message || e)))
+    }
+  }
+  // No presetHealth injected => no check, exactly like scanImportedPins: a surface
+  // that cannot resolve the roster stays silent instead of crying wolf. Both
+  // in-process surfaces (index.mjs) and the shipped CLI wire it; scripts/
+  // test-preset-health.mjs asserts the check really shows up in the report.
 
   const summary = checks.reduce((acc, c) => { acc[c.status] = (acc[c.status] || 0) + 1; return acc }, { ok: 0, warn: 0, fail: 0 })
   return {

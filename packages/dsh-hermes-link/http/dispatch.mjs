@@ -31,7 +31,7 @@ import {
   pickParentAgent,
 } from './dispatch-task.mjs'
 
-export const VERSION = '0.8.5'
+export const VERSION = '0.8.6'
 const BEARER_TOKEN = process.env.HERMES_LINK_TOKEN || ''
 
 // Re-exports for backward compat (tests / external consumers).
@@ -298,6 +298,8 @@ export function register(ctx, deps) {
           hermesHome,
           dshHome: dshHome(),
           metrics: deps.metrics,
+          // v0.8.6: the agent-preset pin check (index.mjs injects the collector).
+          presetHealth: deps.presetHealth,
           live: {
             mirrorPolicy: sessionMirror && sessionMirror.policyStatus ? sessionMirror.policyStatus() : null,
             outboxStats: hermesOutbox && hermesOutbox.stats ? hermesOutbox.stats() : null,

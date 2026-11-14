@@ -24,6 +24,56 @@ These commits existed and the work shipped through subsequent published versions
 
 ---
 
+## [0.8.6] — 2026-11-14
+
+### Fixed
+
+- **An import no longer pins an agent preset the host cannot resume.** The 0.8.1
+  guard in `decideImportPreset` asked only whether the alias id appeared in
+  `ctx.get('agentPresets').list()`. dsh keeps a preset whose plugin tree failed to
+  mount in that roster and marks the row `broken`
+  (`dsh-agent-preset-registry/src/index.ts`: `record.broken = error.message`, and
+  `diagnostic()` returns it while the record has no generation), so the check passed
+  and every imported session was pinned to a preset that `retain()` later refuses
+  with `agent-preset/invalid`. Concretely: upgrading to dsh 0.2.2-rc.2 removed the
+  `@deepseek-ai/dsh-tool-subagent-control/list-agents` subpath export (dropped in
+  0.2.1-rc.3, upstream issue #1940), a profile row still named it, the whole
+  `hermes-imported` tree failed to mount, and clicking any Hermes-synced session in
+  the Web GUI made its sidebar row disappear. The guard now reads the `broken` /
+  `enabled` fields, and `repairStalePins()` unpins what a running host cannot resume.
+- **Startup reports the relapse instead of staying silent.** The auto-sync pass now
+  classifies the stored pins against the live roster and warns with the session ids
+  and the reason; it only rewrites headers when the plugin config sets
+  `repairAgentPins: true` (dry run by default).
+
+### Added
+
+- `services/preset-health.mjs`: the three sources of truth behind that decision --
+  the live roster (`rosterRowIsUsable`, `usablePresetIds`, `presetRosterState`,
+  `classifyStoredPins`), an offline audit of the profile YAML
+  (`extractDeclaredPresets`, `auditPresetConfigs`, `packageSearchRoots`,
+  `resolvePluginRow`, `isNpmSpecifier` -- every declared plugin row must import, and
+  its `exports` map must define the subpath it names), and the stored headers
+  (`scanStoredPins`), collapsed into one doctor check by `presetHealthCheck` /
+  `collectPresetHealth`.
+- Doctor check `imported_agent_preset` on all three surfaces (`hermes_link_doctor`,
+  `GET /mcp/collab/doctor`, `npx hermes-link-doctor`).
+- `hermes-link-repair-agent-preset --check` (exit 1 when the pins cannot be resumed)
+  and `--from auto` (stale = pinned ids that are neither host built-ins nor declared
+  and mountable, so the data and the config are flagged together).
+
+### Changed
+
+- The doctor CLI recomputes `summary`/`ok` after it appends its own checks; until now
+  the printed tally ignored the live probe and the pin-scan stub.
+- `repairStalePins()` returns bare session ids in `repaired` (the dry-run wording
+  moved to the log line) and refuses to act when the roster is unreadable.
+- `scripts/test-preset-health.mjs` (12 cases) added; it and
+  `scripts/test-agent-preset-repair.mjs` are now part of `npm test` (`npm run
+  test:preset` runs just those two).
+
+---
+
 ## [0.8.5] — 2026-11-07
 
 ### Fixed

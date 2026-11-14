@@ -57,7 +57,9 @@ import { createSseBroker } from './services/sse-broker.mjs'
 import { createMetricsRegistry } from './services/metrics.mjs'
 import { buildRateLimiterFromEnv } from './services/rate-limit.mjs'
 import { createAmendWatcher } from './services/amend-watcher.mjs'
-import { stateDir as auditStateDir, setMetricsSink as setAuditMetrics } from './services/audit.mjs'
+import { stateDir as auditStateDir, dshHome as dshHomeDir, setMetricsSink as setAuditMetrics } from './services/audit.mjs'
+import { classifyStoredPins, collectPresetHealth } from './services/preset-health.mjs'
+import { repairStalePins } from './services/agent-preset-repair.mjs'
 import { setMetricsSink as setOutboxMetrics } from './services/outbox.mjs'
 import { setMetricsSink as setAmendMetrics } from './services/amend-watcher.mjs'
 import { register as registerHttp, pickParentAgent, dispatcherCount } from './http/dispatch.mjs'
@@ -78,7 +80,7 @@ import { createHermesProvider, resolveHermesBin } from './services/hermes-provid
 
 const skillDir = fileURLToPath(new URL('./skills/dsh-hermes-link', import.meta.url))
 const MAX_FOUNDATION_SLICE_CHARS = 4096
-const VERSION = '0.8.5'
+const VERSION = '0.8.6'
 
 // -----------------------------------------------------------------------------
 // v0.3.2 F6 - register the canonical metric shape so the wire format is
@@ -260,6 +262,12 @@ export const inject = ['skills', 'webServer', 'sessions', 'agents', 'subagents',
 
 export function apply(ctx, config) {
   const hermesHome = resolveHermesHome(config)
+  // v0.8.6 - the agent-preset guard. 'agentPresets' is deliberately NOT added to
+  // `inject` (a host without the registry must still load this plugin), so every
+  // read goes through the guarded collector: rows=null means "could not ask the
+  // host", never "nothing is broken". The same closure backs the doctor tool, the
+  // status tool and GET /mcp/collab/doctor, so all three surfaces agree.
+  const presetHealth = () => collectPresetHealth({ ctx, dshHome: dshHomeDir() })
   registerHermesSubagentProvider(ctx, config)
   console.log('[dsh-hermes-link v' + VERSION + '] applying; hermes_home=' + hermesHome)
 
@@ -474,10 +482,10 @@ export function apply(ctx, config) {
       ctx.tools.register(createHermesDispatchTool({ ctx, hermesBin: resolveHermesBin(config && typeof config.hermesBin === 'string' ? config.hermesBin : undefined) }))
       // v0.6.2 - the doctor, callable from the session (same module as the CLI
       // and the /mcp/collab/doctor route).
-      ctx.tools.register(createDoctorTool({ hermesHome, sessionMirror, hermesOutbox, metrics }))
+      ctx.tools.register(createDoctorTool({ hermesHome, sessionMirror, hermesOutbox, metrics, presetHealth }))
       // v0.6.9 - the one-glance status: the doctor's checks condensed into what a
       // person (or the agent) actually asks: is it working, and what do I do next?
-      ctx.tools.register(createStatusTool({ hermesHome, sessionMirror, hermesOutbox, consultClient, metrics, importer }))
+      ctx.tools.register(createStatusTool({ hermesHome, sessionMirror, hermesOutbox, consultClient, metrics, importer, presetHealth }))
       console.log('[dsh-hermes-link v' + VERSION + '] tools registered: list_hermes_sessions, import_hermes_session, load_hermes_persona, consult_hermes, mirror_session_to_hermes, session_mirror, load_hermes_project_memory, read_hermes_memory, rotate_outbox_now, dispatch_status, hermes_link_doctor, hermes_dispatch')
     }
   } catch (e) {
@@ -497,6 +505,8 @@ export function apply(ctx, config) {
       sseBroker,
       sessionMirror,
       hermesOutbox,
+      // v0.8.6: GET /mcp/collab/doctor resolves the pinned agent preset here too.
+      presetHealth,
       // v0.6.2 fix: /mcp/collab/metrics reads deps.metrics and returns 503
       // without it -- it was documented (README/SKILL, "21 counters + 9 gauges")
       // and exercised by the e2e suite, which builds its OWN deps and therefore
@@ -538,6 +548,29 @@ export function apply(ctx, config) {
         if (typeof importer.renameAll === 'function') {
           const n = await importer.renameAll()
           if (n.renamed > 0) console.log('[dsh-hermes-link] relabelled ' + n.renamed + ' imported session(s) as Hermes snapshots')
+        }
+        // v0.8.6 - the pin guard, after the sync so freshly imported headers are
+        // covered too. A preset the host declared but could not mount is as
+        // unopenable as one it never declared: resume throws agent-preset/invalid,
+        // the failed activation disposes the session, and its sidebar row is
+        // removed -- the report is "the Hermes sessions vanish when I click them".
+        // Rewriting stored headers is a data change, so it is opt-in:
+        //   config: { repairAgentPins: true }   (default: report only)
+        try {
+          const health = await presetHealth()
+          const verdict = classifyStoredPins((health.scan && health.scan.pins) || [], health.rows)
+          if (verdict.unusable.length > 0) {
+            const autoRepair = config && config.repairAgentPins === true
+            const res = await repairStalePins({ rows: health.rows, sessionsRoot: join(dshHomeDir(), 'sessions'), dryRun: !autoRepair })
+            const pinned = [...new Set(verdict.unusable.map((u) => u.preset))].join(', ')
+            console.warn('[dsh-hermes-link] ' + verdict.unusable.length + ' imported session(s) pin an agent preset the host cannot resume (' + pinned + '): ' +
+              (verdict.unusable[0].reason || 'undeclared or broken'))
+            if (res.repaired.length > 0) console.warn('[dsh-hermes-link] unpinned ' + res.repaired.length + ' session(s); restart dsh (a preset mount failure is final for the process) and reopen them')
+            else if (!autoRepair) console.warn('[dsh-hermes-link] set config { repairAgentPins: true } to unpin them automatically, or run: node node_modules/dsh-hermes-link/bin/hermes-link-repair-agent-preset.mjs --to standard')
+            for (const line of res.skipped) console.warn('[dsh-hermes-link] pin repair skipped: ' + line)
+          }
+        } catch (e) {
+          console.warn('[dsh-hermes-link] agent-preset guard failed:', e && e.message || e)
         }
       } catch (e) {
         console.warn('[dsh-hermes-link] startup auto-sync failed:', e && e.message || e)

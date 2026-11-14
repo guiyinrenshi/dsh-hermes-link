@@ -26,7 +26,7 @@ import {
 // `initialize`/`ping` payload advertises this one to Hermes, and check-version-sync
 // now tracks it too (it drifted to 0.6.0 while the rest moved, which the e2e
 // suite caught on the wire).
-const VERSION = '0.8.5'
+const VERSION = '0.8.6'
 
 // ---------------------------------------------------------------------------
 // v0.6.0 (D1) - per-token rate-limit gate. Called ONCE per tools/call from

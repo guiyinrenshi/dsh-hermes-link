@@ -13,7 +13,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import { runDoctor, renderDoctor } from '../services/doctor.mjs'
 import { dshHome } from '../services/audit.mjs'
 
-export function createDoctorTool({ hermesHome, sessionMirror, hermesOutbox, metrics }) {
+export function createDoctorTool({ hermesHome, sessionMirror, hermesOutbox, metrics, presetHealth = null }) {
   return defineTool({
     name: 'hermes_link_doctor',
     description: 'v0.6.2: run the dsh-hermes-link runtime self-check and return its report. Measures what source reading cannot: plugin heartbeat freshness, whether enabled session mirrors are still advancing, consult backlog with per-ticket age, amend-directory writability, the Hermes->DSH outbox state, and (optionally) whether every imported session still carries a routable model route. Use it whenever a channel "just does not work" before digging into code.',
@@ -33,6 +33,8 @@ export function createDoctorTool({ hermesHome, sessionMirror, hermesOutbox, metr
         // v0.6.5: the same registry that backs GET /mcp/collab/metrics, so the
         // session tool reports the numbers as well as the health.
         metrics,
+        // v0.8.6: the pinned agent preset is resolved live here (registry + disk).
+        presetHealth,
         live: {
           mirrorPolicy: sessionMirror && typeof sessionMirror.policyStatus === 'function' ? sessionMirror.policyStatus() : null,
           outboxStats: hermesOutbox && typeof hermesOutbox.stats === 'function' ? hermesOutbox.stats() : null,

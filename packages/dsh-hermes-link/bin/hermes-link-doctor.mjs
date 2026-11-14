@@ -30,6 +30,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 // repository root: this file ships in the tarball, where no repo root exists.
 const here = dirname(fileURLToPath(import.meta.url))
 const { runDoctor, renderDoctor, parsePrometheus } = await import(pathToFileURL(join(here, '..', 'services', 'doctor.mjs')).href)
+const { collectPresetHealth } = await import(pathToFileURL(join(here, '..', 'services', 'preset-health.mjs')).href)
 
 const args = process.argv.slice(2)
 const has = (f) => args.includes(f)
@@ -156,6 +157,10 @@ const report = await runDoctor({
   dshHome,
   live: live ? { mirrorPolicy: live.checks && live.checks.find((c) => c.id === 'mirror_policy') ? null : null } : null,
   scanImportedPins: pinScan ? scanImportedPins : null,
+  // v0.8.6: offline there is no agentPresets roster, so the check falls back to
+  // auditing every profile config on disk -- which is exactly how the ./list-agents
+  // incident would have been caught before a session was clicked.
+  presetHealth: () => collectPresetHealth({ dshHome }),
 })
 
 if (live) {
@@ -194,6 +199,11 @@ if (!pinScan) {
     detail: 'skipped (pass --pin-scan to read every imported session; ~minutes on 145 sessions)',
   })
 }
+
+// The live probe and the pin-scan stub are appended after runDoctor(), so the
+// summary the module computed no longer matches the list being printed: recount.
+report.summary = report.checks.reduce((acc, c) => { acc[c.status] = (acc[c.status] || 0) + 1; return acc }, { ok: 0, warn: 0, fail: 0 })
+report.ok = report.summary.fail === 0
 
 if (asJson) console.log(JSON.stringify(report, null, 2))
 else console.log(renderDoctor(report))

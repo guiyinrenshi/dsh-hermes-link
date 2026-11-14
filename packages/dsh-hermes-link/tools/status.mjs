@@ -9,7 +9,7 @@ import { runDoctor } from '../services/doctor.mjs'
 import { summariseStatus, renderStatus } from '../services/status.mjs'
 import { dshHome } from '../services/audit.mjs'
 
-export function createStatusTool({ hermesHome, sessionMirror, hermesOutbox, consultClient, metrics, importer }) {
+export function createStatusTool({ hermesHome, sessionMirror, hermesOutbox, consultClient, metrics, importer, presetHealth = null }) {
   return defineTool({
     name: 'hermes_link_status',
     description: 'v0.6.9: one-glance status of the dsh-hermes-link bridge -- whether Hermes notifications, session import, session mirror and the consult channel are working right now, the counters since the plugin loaded (including consult token usage), and what to do next if something is off. Cheaper and friendlier than hermes_link_doctor when you just want to know "is it working?".',
@@ -34,6 +34,7 @@ export function createStatusTool({ hermesHome, sessionMirror, hermesOutbox, cons
         hermesHome,
         dshHome: dshHome(),
         metrics,
+        presetHealth,
         live: { mirrorPolicy: mirror, outboxStats },
       })
       const status = summariseStatus({ report, outboxStats, consultHealth, mirror })
