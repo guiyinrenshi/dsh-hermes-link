@@ -12,8 +12,8 @@ be installed next to the original without a scope collision, and its bundle patc
 entry (`cordis.patch.yml` → `name: dsh-hermes-link`) now matches the published
 package name.
 
-Verified against **dsh 0.2.1-rc.5** on Linux; the upstream plugin targets dsh
-0.1.5-rc.2.
+Verified against **dsh 0.2.2-rc.2** on Linux (the 0.7.0-0.8.3 fixes were verified
+on 0.2.1-rc.5); the upstream plugin targets dsh 0.1.5-rc.2.
 
 ---
 
@@ -33,6 +33,7 @@ real deployment, with its root cause and the fix in this fork.
 | 7 | Plugin mounts nowhere: `Cannot access 'metrics' before initialization` | TDZ in `apply()`: `createConsultClient({... metrics})` ran three lines before `const metrics = ...` | registry created before its first reader |
 | 8 | `ERR_MODULE_NOT_FOUND 'dsh-hermes-link'` on boot | the bundle patch used an unscoped name for a scoped package (upstream issue #3) | published unscoped and the patch name matches `(dsh-hermes-link)` |
 | 9 | Imported conversations are listed as *unnamed* until opened | the sidebar reads the **projection cache** (a zero-I/O checkpoint), and imports only write the log | import warms the cache with `ctx.session.get('sessionProjectionCache').coldSnapshot(header, 0, events)`, the same cold-read the GUI would do on open |
+| 10 | After a dsh upgrade every imported session's sidebar row **disappears when clicked** while the log file stays intact | an import pins `agentPreset` in the session header and dsh resolves that pin on resume; a preset whose plugin tree fails to mount stays broken **for the whole process** (`agent-preset/invalid` -> `session/disposed` -> `api-session/removed`, so the client baseline drops the row). The 0.8.1 guard only asked whether the id *existed*, not whether it *mounted*, so one hand-written profile row naming a removed subpath export (`@deepseek-ai/dsh-tool-subagent-control/list-agents`, dropped in dsh 0.2.1-rc.3, upstream issue #1940) pinned 11 sessions to a preset that could never resume | 0.8.6 honours the roster's `broken` / `enabled` flags and adds `services/preset-health.mjs`: three independent sources - the live roster, an offline audit that resolves **every plugin row of every declared preset** against the installed packages' `exports`, and a scan of the pins stored on disk. Surfaced as the doctor check `imported_agent_preset`, guarded again at startup (warn by default, `repairAgentPins: true` to unpin), plus `hermes-link-repair-agent-preset --check` and `--from auto` |
 
 ## 2. Capabilities ported from a cross-machine deployment
 
@@ -88,6 +89,13 @@ single-host install.
   real `USER.md`.
 - Suites: `npm test` **27/27** (adds a v4 read-path regression, the memory reader,
   and the catalog fallback).
+- 0.8.6 (preset health): the offline audit pointed at the **pre-fix** profile
+  reproduces the incident exactly - one problem, row `tool-subagent-list-agents`,
+  reason `Package subpath './list-agents' is not defined by "exports"` - and reports
+  zero problems against the repaired profile. `repairStalePins` is exercised dry-run
+  and for real on a temp session tree (backup written, pin removed, id preserved).
+  `scripts/test-preset-health.mjs` 12/12 and `scripts/test-agent-preset-repair.mjs`
+  8/8, both wired into `npm test` (full chain green, version-sync 8/8, docs-fresh 29/29).
 
 ## 5. Known differences / limitations
 
@@ -112,8 +120,14 @@ single-host install.
    v4 order are **unreadable**; delete the affected `hermes-*` session directories
    (or call `import_hermes_session` again for the ones you care about) and the
    startup auto-sync rebuilds them in the correct order.
-4. Run `npx hermes-link-doctor` — the healthy baseline is `8 ok, 1 warn, 0 fail`
-   (the single warning is the empty session-mirror state).
+4. Run `npx hermes-link-doctor` — the healthy baseline is `10 ok, 1 warn, 0 fail`
+   (the single warning is the empty session-mirror state; since 0.8.6 the offline CLI
+   also recounts the summary after appending its own checks, and one new line is
+   `imported session agent-preset pins`).
+5. After upgrading **dsh** itself, run
+   `npx hermes-link-repair-agent-preset --check` before touching any session: it
+   exits 1 when a stored pin can no longer be resumed, or when a profile row names a
+   plugin subpath the installed packages no longer export.
 
 ---
 
@@ -121,7 +135,7 @@ single-host install.
 
 - **为什么 fork**：上游 2026-09-17 后停更，issue #3 无回应；0.6.11 面向 dsh
   0.1.5-rc.2，在 0.2.x 上派单、导入、followup 全部不可用。
-- **兼容修复 9 项**：subagents 接口改名（`startActivation`/`prompt`/`sendMessage`）、
+- **兼容修复 10 项**（第 10 项见下方单独一条）：subagents 接口改名（`startActivation`/`prompt`/`sendMessage`）、
   followup 改走宿主适配面、`session.events` → `snapshotEvents()`、会话格式 v4
   （版本号 + 自愈重试 + 错误透传）、v4 事件顺序与工具生命周期、工具结果改
   `role:'tool'` 一等消息、TDZ 启动崩溃、bundle 包名、导入后预热投影缓存让标题立刻显示。
@@ -132,5 +146,14 @@ single-host install.
   安全与排错）。
 - **验证**：11/11 会话导入且通过宿主读取校验（含 4410 事件的大会话）、侧边栏无需点开
   即有标题、一次性/可持续/followup/interrupt 全部实测、`npm test` 27/27。
+- **第 10 项修复（0.8.6）**：升级 dsh 后 Hermes 会话「一点就从侧边栏消失」——导入时
+  写进会话头的 `agentPreset` 指向一个挂不起来的 preset（profile 里手写了一行已在
+  0.2.1-rc.3 被删除的 `…/list-agents` 子路径导出，上游 issue #1940），宿主抛
+  `agent-preset/invalid` 后会话被 dispose，客户端按基线合并把这一行删掉。0.8.1 的守卫
+  只看 preset 在不在名单里、没看它是否可挂载，所以没拦住。0.8.6 读花名册的 `broken` /
+  `enabled`，并新增离线审计（每个声明的 preset 的每一行插件都对照已安装包的 `exports`
+  解析）加磁盘 pin 扫描；doctor 多一项 `imported_agent_preset`，启动时再兜一次（默认
+  只告警，配 `repairAgentPins: true` 才自动改头），repair CLI 新增 `--check` /
+  `--from auto`。
 - **已知限制**：0.2.x 不再支持逐次派单的 `toolFilter`/`persona`（persona 折进
   prompt，白名单仅作提示，不强制）。
